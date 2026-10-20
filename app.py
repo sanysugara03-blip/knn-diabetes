@@ -36,8 +36,8 @@ CONTOH = {
     "tinggi": {"in_usia": 52, "in_bmi": 31.0, "in_glu": 150, "in_tensi": 140, "in_riw": "Ada"},
 }
 
-C = {"ink": "#3B3556", "violet": "#7B68B5", "low": "#5E9C86", "high": "#D9778A",
-     "soft": "#716A8A", "line": "#ECE6F2", "grid": "#F1ECF6", "amber": "#E8C07D"}
+C = {"ink": "#34402F", "main": "#5C7D42", "low": "#4E9A86", "high": "#D9778A",
+     "soft": "#6B7660", "line": "#E3EAD6", "grid": "#EEF2E6", "amber": "#E5C879"}
 
 
 # ============================================================
@@ -225,10 +225,10 @@ def kategori_tensi(v):
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap');
-:root{--ink:#3B3556;--violet:#7B68B5;--violet-d:#5F4E96;--lav:#F3EEF9;--bg:#FBF8FC;--line:#ECE6F2;--soft:#716A8A;
---low:#5E9C86;--low-bg:#E8F3EE;--low-d:#35705C;--high:#D9778A;--high-bg:#FBEAEE;--high-d:#A04458;
---warn-bg:#FBF1DE;--warn-d:#7A5A1E;--info-bg:#EEF0FA;--info-d:#4A5A94;--amber:#E8C07D;
---shadow:0 1px 2px rgba(59,53,86,.04),0 8px 22px rgba(59,53,86,.05);}
+:root{--ink:#34402F;--main:#5C7D42;--main-d:#46612F;--tint:#EDF3E4;--bg:#F8FAF3;--line:#E3EAD6;--soft:#6B7660;
+--low:#4E9A86;--low-bg:#E4F2EE;--low-d:#2F6B5B;--high:#D9778A;--high-bg:#FBEAEE;--high-d:#A04458;
+--warn-bg:#FBF3DC;--warn-d:#6F5A1C;--info-bg:#EAF1F0;--info-d:#3F6470;--amber:#E5C879;
+--shadow:0 1px 2px rgba(52,64,47,.04),0 8px 22px rgba(52,64,47,.05);}
 .stApp,[data-testid="stAppViewContainer"]{background:var(--bg);color:var(--ink);}
 .stApp,.stApp p,.stApp label,.stApp li,.stApp input,.stApp textarea,.stApp button{font-family:'Albert Sans',system-ui,-apple-system,'Segoe UI',sans-serif;}
 .stApp h1,.stApp h2,.stApp h3{font-family:'Playfair Display',Georgia,serif;color:var(--ink);font-weight:600;}
@@ -236,7 +236,7 @@ header[data-testid="stHeader"]{background:transparent;}
 .block-container{max-width:760px;padding:1.4rem 1rem 4rem;}
 #MainMenu,footer{visibility:hidden;}
 
-.hero{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:linear-gradient(135deg,#F1EAF8 0%,#FBEAF0 100%);border:1px solid var(--line);border-radius:26px;padding:30px 28px 26px;margin-bottom:18px;}
+.hero{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:linear-gradient(135deg,#EAF1DD 0%,#F6F1E1 100%);border:1px solid var(--line);border-radius:26px;padding:30px 28px 26px;margin-bottom:18px;}
 .hero-text{flex:1 1 300px;min-width:0;}
 .hero-title{font-family:'Playfair Display',Georgia,serif;font-size:2.15rem;line-height:1.15;font-weight:600;margin:0 0 10px;color:var(--ink);}
 .hero-sub{margin:0;color:var(--soft);font-size:1rem;line-height:1.6;max-width:46ch;}
@@ -247,21 +247,21 @@ header[data-testid="stHeader"]{background:transparent;}
 
 .stTabs [data-baseweb="tab-list"]{gap:6px;border-bottom:1px solid var(--line);overflow-x:auto;}
 .stTabs [data-baseweb="tab"]{height:46px;padding:0 14px;color:var(--soft);font-weight:500;}
-.stTabs [aria-selected="true"]{color:var(--violet-d);font-weight:600;}
-.stTabs [data-baseweb="tab-highlight"]{background-color:var(--violet);}
+.stTabs [aria-selected="true"]{color:var(--main-d);font-weight:600;}
+.stTabs [data-baseweb="tab-highlight"]{background-color:var(--main);}
 
 div[data-testid="stVerticalBlockBorderWrapper"],[data-testid="stExpander"]{border-color:var(--line) !important;border-radius:18px;background:#fff;box-shadow:var(--shadow);}
 .stNumberInput label,.stTextInput label,.stSlider label,.stRadio>label{color:var(--soft);font-weight:500;}
 
-.stButton>button,.stDownloadButton>button{width:100%;border-radius:14px;min-height:48px;font-weight:500;border:1px solid var(--line);background:#fff;color:var(--violet-d);transition:all .2s ease;}
-.stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--violet);background:var(--lav);color:var(--violet-d);}
-.stButton>button[kind="primary"],.stButton>button[data-testid="stBaseButton-primary"]{background:var(--violet);color:#fff;border-color:var(--violet);box-shadow:0 6px 16px rgba(123,104,181,.28);}
-.stButton>button[kind="primary"]:hover,.stButton>button[data-testid="stBaseButton-primary"]:hover{background:var(--violet-d);border-color:var(--violet-d);color:#fff;}
-.stButton>button:focus-visible,.stDownloadButton>button:focus-visible{outline:3px solid #CFC6EC;outline-offset:2px;}
+.stButton>button,.stDownloadButton>button{width:100%;border-radius:14px;min-height:48px;font-weight:500;border:1px solid var(--line);background:#fff;color:var(--main-d);transition:all .2s ease;}
+.stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--main);background:var(--tint);color:var(--main-d);}
+.stButton>button[kind="primary"],.stButton>button[data-testid="stBaseButton-primary"]{background:var(--main);color:#fff;border-color:var(--main);box-shadow:0 6px 16px rgba(92,125,66,.28);}
+.stButton>button[kind="primary"]:hover,.stButton>button[data-testid="stBaseButton-primary"]:hover{background:var(--main-d);border-color:var(--main-d);color:#fff;}
+.stButton>button:focus-visible,.stDownloadButton>button:focus-visible{outline:3px solid #C9DAB6;outline-offset:2px;}
 
 .step{display:flex;gap:14px;align-items:flex-start;margin:30px 0 12px;}
-.step-n{flex:0 0 30px;height:30px;border-radius:50%;background:var(--lav);color:var(--violet-d);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:.9rem;}
-.step-n.end{background:var(--violet);color:#fff;}
+.step-n{flex:0 0 30px;height:30px;border-radius:50%;background:var(--tint);color:var(--main-d);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:.9rem;}
+.step-n.end{background:var(--main);color:#fff;}
 .step-t{font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:1.2rem;color:var(--ink);line-height:1.25;}
 .step-d{color:var(--soft);font-size:.92rem;margin-top:3px;line-height:1.5;}
 .sec{font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:1.1rem;color:var(--ink);margin:28px 0 8px;}
@@ -270,11 +270,11 @@ div[data-testid="stVerticalBlockBorderWrapper"],[data-testid="stExpander"]{borde
 .tbl-wrap{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);}
 .tbl-wrap.scroll{max-height:420px;}
 table.tbl{width:100%;border-collapse:collapse;font-size:.91rem;white-space:nowrap;}
-table.tbl th{position:sticky;top:0;text-align:left;background:var(--lav);color:var(--violet-d);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);}
-table.tbl td{padding:10px 14px;border-bottom:1px solid #F5F1F9;color:var(--ink);}
+table.tbl th{position:sticky;top:0;text-align:left;background:var(--tint);color:var(--main-d);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);}
+table.tbl td{padding:10px 14px;border-bottom:1px solid #EFF3E7;color:var(--ink);}
 table.tbl tr:last-child td{border-bottom:none;}
-table.tbl tr.pick td{background:#F7F3FC;}
-table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--violet);}
+table.tbl tr.pick td{background:#F3F7EC;}
+table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--main);}
 .pill{display:inline-block;padding:2px 11px;border-radius:999px;font-size:.8rem;font-weight:600;}
 .pill.low{background:var(--low-bg);color:var(--low-d);}
 .pill.high{background:var(--high-bg);color:var(--high-d);}
@@ -296,8 +296,8 @@ table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--violet);}
 
 .chartbox{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px 10px 6px;box-shadow:var(--shadow);}
 .chartbox svg{width:100%;max-width:560px;height:auto;display:block;margin:0 auto;}
-.ct{font-size:13px;fill:#716A8A;font-family:'Albert Sans',sans-serif;}
-.ctb{font-size:13px;font-weight:600;fill:#3B3556;font-family:'Albert Sans',sans-serif;}
+.ct{font-size:13px;fill:#6B7660;font-family:'Albert Sans',sans-serif;}
+.ctb{font-size:13px;font-weight:600;fill:#34402F;font-family:'Albert Sans',sans-serif;}
 .pulse{transform-box:fill-box;transform-origin:center;animation:pulse 2.6s ease-in-out infinite;}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.30;}50%{transform:scale(1.3);opacity:.12;}}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none;}}
@@ -308,10 +308,10 @@ table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--violet);}
 .sw.high{background:var(--high);}
 .sw.ring{background:#fff;border:2px solid var(--ink);}
 .sw.pat{background:var(--ink);border-radius:2px;width:10px;height:10px;transform:rotate(45deg);}
-.sw.me{background:var(--violet);border-radius:3px;width:14px;height:8px;}
+.sw.me{background:var(--main);border-radius:3px;width:14px;height:8px;}
 
 .verdict{border-radius:24px;padding:26px 26px 24px;border:1px solid;box-shadow:var(--shadow);}
-.verdict.low{background:linear-gradient(135deg,#EEF7F3,#E3F1EB);border-color:#D2E8DE;}
+.verdict.low{background:linear-gradient(135deg,#EAF5F1,#DFF0EA);border-color:#CDE6DD;}
 .verdict.high{background:linear-gradient(135deg,#FDF0F3,#F9E4EA);border-color:#F2D3DB;}
 .v-who{font-size:.92rem;color:var(--soft);}
 .v-title{font-family:'Playfair Display',Georgia,serif;font-size:2.2rem;font-weight:600;line-height:1.1;margin:4px 0 8px;}
@@ -319,8 +319,8 @@ table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--violet);}
 .verdict.high .v-title{color:var(--high-d);}
 .v-sub{color:var(--ink);font-size:1rem;line-height:1.55;}
 .meter{margin-top:20px;}
-.meter-track{position:relative;height:10px;border-radius:999px;background:linear-gradient(90deg,#CFE5DB 0%,#CFE5DB 50%,#F4CCD5 50%,#F4CCD5 100%);}
-.meter-pin{position:absolute;top:50%;width:22px;height:22px;border-radius:50%;background:var(--violet);border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(59,53,86,.3);}
+.meter-track{position:relative;height:10px;border-radius:999px;background:linear-gradient(90deg,#CDE6DD 0%,#CDE6DD 50%,#F4CCD5 50%,#F4CCD5 100%);}
+.meter-pin{position:absolute;top:50%;width:22px;height:22px;border-radius:50%;background:var(--main);border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(52,64,47,.3);}
 .meter-scale{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:.84rem;color:var(--soft);}
 .meter-scale b{color:var(--ink);}
 .disclaimer{font-size:.83rem;color:var(--soft);margin:10px 2px 0;}
@@ -332,11 +332,11 @@ table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--violet);}
 .chip.warn{background:var(--warn-bg);color:var(--warn-d);}
 .chip.bad,.chip.high{background:var(--high-bg);color:var(--high-d);}
 .chip.info{background:var(--info-bg);color:var(--info-d);}
-.chip.cur{outline:2px solid var(--violet);outline-offset:1px;}
+.chip.cur{outline:2px solid var(--main);outline-offset:1px;}
 
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 16px 14px;box-shadow:var(--shadow);}
-.kpi b{display:block;font-family:'Playfair Display',Georgia,serif;font-size:1.7rem;font-weight:600;color:var(--violet-d);line-height:1.15;}
+.kpi b{display:block;font-family:'Playfair Display',Georgia,serif;font-size:1.7rem;font-weight:600;color:var(--main-d);line-height:1.15;}
 .kpi span{display:block;font-size:.83rem;color:var(--soft);margin-top:4px;line-height:1.4;}
 
 .guide{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin-bottom:12px;line-height:1.65;box-shadow:var(--shadow);}
@@ -406,13 +406,13 @@ def svg_hero():
     dekat = [(150, 48), (136, 26), (170, 76)]
     o = ['<svg viewBox="0 0 220 150" role="img" aria-label="Ilustrasi: pasien baru dibandingkan dengan pasien terdekat">']
     for x, y in dekat:
-        o.append(f'<line x1="{px}" y1="{py}" x2="{x}" y2="{y}" stroke="#3B3556" stroke-opacity=".30" stroke-width="1.5" stroke-dasharray="4 4"/>')
+        o.append(f'<line x1="{px}" y1="{py}" x2="{x}" y2="{y}" stroke="#34402F" stroke-opacity=".30" stroke-width="1.5" stroke-dasharray="4 4"/>')
     for x, y in rendah:
-        o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#8CC5B1"/>')
+        o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#86BFAC"/>')
     for x, y in tinggi:
         o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#EE9AAA"/>')
-    o.append(f'<circle class="pulse" cx="{px}" cy="{py}" r="17" fill="#E8C07D"/>')
-    o.append(f'<polygon points="{px},{py-10} {px+10},{py} {px},{py+10} {px-10},{py}" fill="#E8C07D" stroke="#3B3556" stroke-width="2"/>')
+    o.append(f'<circle class="pulse" cx="{px}" cy="{py}" r="17" fill="#E5C879"/>')
+    o.append(f'<polygon points="{px},{py-10} {px+10},{py} {px},{py+10} {px-10},{py}" fill="#E5C879" stroke="#34402F" stroke-width="2"/>')
     o.append("</svg>")
     return "".join(o)
 
@@ -491,7 +491,7 @@ def svg_peta(h):
         o.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="11" fill="none" stroke="{C["ink"]}" stroke-width="2"/>')
         if h["k"] <= 7:
             o.append(f'<text class="ct" x="{cx+13:.1f}" y="{cy-9:.1f}">{e(r["Pasien"])}</text>')
-    o.append(f'<circle class="pulse" cx="{px:.1f}" cy="{py:.1f}" r="19" fill="{C["violet"]}"/>')
+    o.append(f'<circle class="pulse" cx="{px:.1f}" cy="{py:.1f}" r="19" fill="{C["main"]}"/>')
     o.append(f'<polygon points="{px:.1f},{py-11:.1f} {px+11:.1f},{py:.1f} {px:.1f},{py+11:.1f} {px-11:.1f},{py:.1f}" '
              f'fill="{C["ink"]}" stroke="#fff" stroke-width="2"/>')
     lx = min(max(px, L + 34), W - R - 34)
@@ -510,17 +510,17 @@ def svg_profil(h):
     W, X0, LEBAR = 480, 8, 380
     H = 34 + len(FITUR) * 70 + 4
     o = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Perbandingan nilai pasien baru dengan rata-rata tiap kelas">']
-    legenda = [(8, C["violet"], "Pasien"), (96, C["low"], "Rata-rata rendah"), (256, C["high"], "Rata-rata tinggi")]
+    legenda = [(8, C["main"], "Pasien"), (96, C["low"], "Rata-rata rendah"), (256, C["high"], "Rata-rata tinggi")]
     for x, warna, teks in legenda:
         o.append(f'<rect x="{x}" y="2" width="12" height="9" rx="2" fill="{warna}"/>')
         o.append(f'<text class="ct" x="{x+18}" y="11">{teks}</text>')
     for i, f in enumerate(FITUR):
         y0 = 34 + i * 70
         o.append(f'<text class="ctb" x="{X0}" y="{y0+12}">{e(f)} ({e(fmt(b[f]))})</text>')
-        for j, (nilai, warna) in enumerate([(nb[f], C["violet"]), (p0[f], C["low"]), (p1[f], C["high"])]):
+        for j, (nilai, warna) in enumerate([(nb[f], C["main"]), (p0[f], C["low"]), (p1[f], C["high"])]):
             y = y0 + 20 + j * 14
             w = max(0.0, min(1.0, nilai)) * LEBAR
-            o.append(f'<rect x="{X0}" y="{y}" width="{LEBAR}" height="10" rx="3" fill="#F1ECF6"/>')
+            o.append(f'<rect x="{X0}" y="{y}" width="{LEBAR}" height="10" rx="3" fill="#EEF2E6"/>')
             if w > 0:
                 o.append(f'<rect x="{X0}" y="{y}" width="{w:.1f}" height="10" rx="3" fill="{warna}"/>')
             o.append(f'<text class="ct" x="{X0+max(w,0)+6:.1f}" y="{y+9}">{nilai:.2f}</text>')
@@ -548,15 +548,15 @@ def svg_kurva(ks, akurasi, kcur):
         o.append(f'<line x1="{L}" y1="{y:.1f}" x2="{L+pw}" y2="{y:.1f}" stroke="{C["grid"]}"/>')
         o.append(f'<text class="ct" x="{L-8}" y="{y+4:.1f}" text-anchor="end">{int(a*100)}%</text>')
     pts = " ".join(f"{xs(i):.1f},{ys(a):.1f}" for i, a in enumerate(akurasi))
-    o.append(f'<polyline points="{pts}" fill="none" stroke="{C["violet"]}" stroke-width="2.5" stroke-linejoin="round"/>')
+    o.append(f'<polyline points="{pts}" fill="none" stroke="{C["main"]}" stroke-width="2.5" stroke-linejoin="round"/>')
     for i, (k, a) in enumerate(zip(ks, akurasi)):
         x, y = xs(i), ys(a)
         o.append(f'<text class="ct" x="{x:.1f}" y="{T+ph+18}" text-anchor="middle">{k}</text>')
         if k == kcur:
-            o.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{C["violet"]}" stroke="#fff" stroke-width="2"/>')
+            o.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{C["main"]}" stroke="#fff" stroke-width="2"/>')
             o.append(f'<text class="ctb" x="{min(max(x, L+30), W-R-30):.1f}" y="{max(y-12, 14):.1f}" text-anchor="middle">K={k}: {a*100:.0f}%</text>')
         else:
-            o.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="#fff" stroke="{C["violet"]}" stroke-width="2"/>')
+            o.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="#fff" stroke="{C["main"]}" stroke-width="2"/>')
     o.append(f'<text class="ct" x="{L+pw/2:.0f}" y="{H-6}" text-anchor="middle">Nilai K</text>')
     o.append("</svg>")
     return f'<div class="chartbox">{"".join(o)}</div>'
@@ -748,7 +748,7 @@ def tampilkan_hasil(h):
         if any(v < 0 or v > 1 for v in h["norm_baru"].values()):
             catatan("Ada nilai yang berada di luar rentang data latih, sehingga hasil normalisasinya kurang dari 0 atau lebih dari 1. Perhitungan tetap berjalan.")
 
-        langkah("B", f"Hitung jarak {h['metrik']} ke tiap pasien", f"Makin kecil jarak, makin mirip. Baris berpenanda ungu adalah {k} pasien terdekat.")
+        langkah("B", f"Hitung jarak {h['metrik']} ke tiap pasien", f"Makin kecil jarak, makin mirip. Baris berpenanda hijau adalah {k} pasien terdekat.")
         st.latex(r"d = \sqrt{\sum (x_i - y_i)^2}" if euk else r"d = \sum |x_i - y_i|")
         rows = [[str(int(r["Peringkat"])), e(r["Pasien"]), f'{r["Jarak"]:.4f}', pill(r["Kelas"])] for _, r in t.iterrows()]
         st.markdown(tabel_html(["Peringkat", "Pasien", "Jarak", "Kelas"], rows, [bool(x) for x in t["Terpilih"]], scroll=len(t) > 12),
@@ -772,7 +772,7 @@ def tampilkan_hasil(h):
             catatan("Suara diberi bobot 1 dibagi jarak, jadi tetangga yang lebih dekat berpengaruh lebih besar. Panjang batang mengikuti bobot tersebut.")
         elif h["n0"] == h["n1"]:
             catatan("Suara seri, sehingga kelas diambil dari pasien yang paling dekat.")
-            
+
     bagian("Simpan atau unduh")
     with st.container(border=True):
         if h["tersimpan"]:
@@ -953,13 +953,12 @@ def main():
     data = st.session_state.data
     st.markdown(html_hero(len(data), int((data["Kelas"] == 1).sum())), unsafe_allow_html=True)
 
-    t1, t2, t3,  = st.tabs(["Prediksi", "Data", "Panduan"])
+    t1, t2, t3, t4 = st.tabs(["Prediksi", "Data", "Panduan"])
     with t1:
         render_prediksi()
     with t2:
         render_data()
     with t3:
         render_panduan()
-
 
 main()
