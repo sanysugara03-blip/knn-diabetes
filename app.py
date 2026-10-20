@@ -242,6 +242,9 @@ table.tbl tr.pick td:first-child{box-shadow:inset 4px 0 0 var(--violet);}
 .guide b{color:var(--ink);}
 .guide ol,.guide ul{margin:8px 0 0 1.1rem;padding:0;}
 .guide li{margin:4px 0;}
+
+.analisis-box{background:var(--lav);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:16px;line-height:1.6;}
+.analisis-box b{color:var(--ink);}
 </style>
 """
 
@@ -277,8 +280,8 @@ def html_hero(n, n_tinggi):
     return (
         '<div class="hero"><div class="hero-text">'
         '<div class="hero-title" role="heading" aria-level="1">Cek Risiko Diabetes</div>'
-        '<div class="hero-sub">Masukkan data pasien. Sistem mencari pasien yang paling mirip di dataset, '
-        'lalu menentukan risikonya dengan algoritma K-Nearest Neighbors.</div>'
+        '<div class="hero-sub">Sistem Pendukung Keputusan medis berbasis algoritma K-Nearest Neighbors (KNN) '
+        'untuk mengestimasi risiko diabetes secara cepat dan transparan.</div>'
         f'<div class="hero-pills"><span class="hero-pill">{n} pasien di dataset</span>'
         f'<span class="hero-pill">{n_tinggi} berisiko tinggi</span></div></div>'
         f'<div class="hero-art">{svg_hero()}</div></div>')
@@ -399,6 +402,36 @@ def html_kesimpulan(h):
             f'<div class="meter"><div class="meter-track"><span class="meter-pin" style="left:{skor:.1f}%"></span></div>'
             f'<div class="meter-scale"><span>Rendah</span><span>Skor risiko tinggi: <b>{skor:.0f}%</b></span><span>Tinggi</span></div></div></div>'
             '<div class="disclaimer">Hasil ini alat bantu keputusan, bukan diagnosis medis.</div>')
+
+
+def html_analisis(h):
+    b = h["baru"]
+    pred = h["pred"]
+    skor = h["skor"] * 100
+    
+    faktor = []
+    if b["Glukosa"] >= 140:
+        faktor.append("kadar glukosa darah yang cukup tinggi (≥ 140 mg/dL)")
+    elif b["Glukosa"] >= 120:
+        faktor.append("kadar glukosa darah di atas batas rata-rata")
+    
+    if b["BMI"] >= 27:
+        faktor.append("indeks massa tubuh (BMI) yang termasuk kategori berlebih")
+    
+    if b["Riwayat Keluarga"] == 1:
+        faktor.append("memiliki riwayat keluarga dengan diabetes")
+
+    penjelasan_faktor = ", ".join(faktor) if faktor else "kombinasi parameter klinis secara keseluruhan"
+    
+    narasi = (
+        f"Berdasarkan penelusuran <b>{h['k']} tetangga terdekat</b> menggunakan algoritma KNN, "
+        f"pasien <b>{e(h['nama'])}</b> dikategorikan ke dalam tingkat <b>Risiko {LABEL[pred]}</b> "
+        f"dengan tingkat keyakinan skor sebesar <b>{skor:.0f}%</b>.<br><br>"
+        f"Hal ini dipengaruhi oleh kemiripan karakteristik klinis dengan pasien lain di dataset, "
+        f"terutama dari segi {penjelasan_faktor}. "
+        f"{'Disarankan untuk melakukan pemeriksaan lanjutan berkala ke fasilitas kesehatan.' if pred == 1 else 'Pertahankan pola hidup sehat dan jaga kestabilan gula darah.'}"
+    )
+    return f'<div class="analisis-box"><b>Analisis & Interpretasi Hasil:</b><br>{narasi}</div>'
 
 
 def laporan_teks(h):
@@ -523,15 +556,15 @@ tab_pred, tab_data = st.tabs(["🔮 Prediksi Pasien", "📊 Kelola Dataset"])
 
 with tab_pred:
     st.markdown(
-        '<div class="guide"><b>Cara Penggunaan:</b><ol>'
-        '<li>Masukkan data klinis pasien baru pada formulir di bawah.</li>'
-        '<li>Tentukan nilai <b>K</b> (jumlah tetangga terdekat yang dipertimbangkan).</li>'
-        '<li>Klik tombol <b>Hitung Prediksi Risiko</b> untuk melihat proses penelusuran tetangga, grafik spasial, dan hasil akhirnya.</li>'
+        '<div class="guide"><b>Panduan Penggunaan Sistem:</b><ol>'
+        '<li>Masukkan parameter klinis pasien baru (Usia, BMI, Glukosa, Tekanan Darah, Riwayat Keluarga) pada formulir.</li>'
+        '<li>Atur nilai <b>K</b> untuk menentukan berapa banyak tetangga terdekat yang dianalisis.</li>'
+        '<li>Klik tombol <b>Hitung Prediksi Risiko</b> untuk melihat proses normalisasi, perhitungan jarak, grafik peta, serta analisis mendalam.</li>'
         '</ol></div>',
         unsafe_allow_html=True
     )
 
-    bagian("1. Masukkan data pasien baru")
+    bagian("1. Masukkan Data Pasien Baru")
     with st.form("form_pred"):
         nama = st.text_input("Nama atau Kode Pasien", value="Pasien 1")
         c1, c2 = st.columns(2)
@@ -604,8 +637,9 @@ with tab_pred:
         langkah(3, f"Voting dari {h['k']} Tetangga Terdekat", "Menentukan mayoritas kelas dari tetangga terdekat yang terpilih.")
         st.markdown(html_voting(h), unsafe_allow_html=True)
 
-        langkah(4, "Kesimpulan Prediksi", "Hasil akhir estimasi risiko berdasarkan algoritma KNN.", akhir=True)
+        langkah(4, "Kesimpulan & Analisis Hasil", "Hasil akhir estimasi risiko beserta penjelasan naratif.", akhir=True)
         st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
+        st.markdown(html_analisis(h), unsafe_allow_html=True)
 
         bagian("Simpan Hasil ke Dataset")
         st.radio("Pilih kelas untuk disimpan ke dataset:", [0, 1], index=h["pred"], horizontal=True,
@@ -663,28 +697,4 @@ with tab_data:
         st.session_state.f_bmi = c2.number_input("BMI", 10.0, 60.0, 24.0, key="inp_b")
         st.session_state.f_glu = c1.number_input("Glukosa", 40, 400, 100, key="inp_g")
         st.session_state.f_tensi = c2.number_input("Tekanan Darah", 60, 250, 120, key="inp_t")
-        st.session_state.f_riw = st.radio("Riwayat Keluarga", ["Tidak ada", "Ada"], horizontal=True, key="inp_r")
-        st.session_state.f_kelas = st.radio("Kelas Risiko", [0, 1], horizontal=True,
-                                            format_func=lambda x: LABEL[x], key="inp_k")
-        st.form_submit_button("Tambah ke Dataset", on_click=cb_tambah)
-
-    bagian("Hapus Pasien dari Dataset")
-    col_d1, col_d2 = st.columns(2)
-    
-    with col_d1:
-        st.markdown("**Hapus Berdasarkan ID Pasien**")
-        daftar_id = list(data_kini["Pasien"].astype(str))
-        st.selectbox("Pilih ID Pasien yang ingin dihapus:", daftar_id, key="pilih_hapus_pasien")
-        st.button("Hapus Pasien Terpilih", on_click=cb_hapus_pilih, disabled=len(data_kini) <= 3)
-
-    with col_d2:
-        st.markdown("**Aksi Cepat Lainnya**")
-        st.write("Hapus pasien yang paling terakhir ditambahkan:")
-        st.button("Hapus Pasien Terakhir", on_click=cb_hapus_terakhir, disabled=len(data_kini) <= 3)
-        st.write("Kembalikan seluruh dataset ke pengaturan awal:")
-        st.button("Reset ke Dataset Awal (10 Pasien)", on_click=cb_reset)
-
-    bagian("Impor & Ekspor CSV")
-    st.download_button("Unduh Dataset sebagai CSV", data=data_kini.to_csv(index=False).encode("utf-8"),
-                       file_name="dataset_diabetes_knn.csv", mime="text/csv")
-    st.file_uploader("Unggah Dataset CSV", type="csv", key="csv_up", on_change=cb_muat)
+        st.session_state.f_
