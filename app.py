@@ -137,7 +137,7 @@ def baca_csv(isi):
 
 
 # ============================================================
-# GAYA (CSS) & KOMPONEN UI
+# GAYA (CSS) & GRAFIK SVG
 # ============================================================
 CSS = """
 <style>
@@ -209,6 +209,20 @@ table.tbl tr.pick td:first-child{box-shadow:inset 4px 0 0 var(--violet);}
 .votelabel .l{color:var(--low-d);}
 .votelabel .h{color:var(--high-d);}
 
+.chartbox{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 10px 6px;margin-top:10px;}
+.chartbox svg{width:100%;max-width:560px;height:auto;display:block;margin:0 auto;}
+.ct{font-size:13px;fill:#5E5B82;font-family:'Albert Sans',sans-serif;}
+.ctb{font-size:13px;font-weight:600;fill:#1D1B4C;font-family:'Albert Sans',sans-serif;}
+.pulse{transform-box:fill-box;transform-origin:center;animation:pulse 2.6s ease-in-out infinite;}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.30;}50%{transform:scale(1.3);opacity:.12;}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 4px 4px;font-size:.84rem;color:var(--soft);}
+.legend span{display:inline-flex;align-items:center;gap:6px;}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;}
+.sw.low{background:var(--low);}
+.sw.high{background:var(--high);}
+.sw.ring{background:#fff;border:2px solid var(--ink);}
+.sw.pat{background:var(--ink);border-radius:2px;width:10px;height:10px;transform:rotate(45deg);}
+
 .verdict{border-radius:18px;padding:24px 24px 22px;border-left:8px solid;}
 .verdict.low{background:var(--low-bg);border-color:var(--low);}
 .verdict.high{background:var(--high-bg);border-color:var(--high);}
@@ -268,6 +282,80 @@ def html_hero(n, n_tinggi):
         f'<div class="hero-pills"><span class="hero-pill">{n} pasien di dataset</span>'
         f'<span class="hero-pill">{n_tinggi} berisiko tinggi</span></div></div>'
         f'<div class="hero-art">{svg_hero()}</div></div>')
+
+
+def tick_bagus(lo, hi, n=5):
+    raw = (hi - lo) / n
+    mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+    step = mag * 10
+    for m in (1, 2, 2.5, 5, 10):
+        if raw <= m * mag:
+            step = m * mag
+            break
+    v = math.ceil(lo / step) * step
+    out = []
+    while v <= hi + 1e-9:
+        out.append(round(v, 6))
+        v += step
+    return out
+
+
+def svg_peta(h):
+    d, b, tab = h["data"], h["baru"], h["tabel"]
+    W, H, L, R, T, B = 480, 340, 56, 14, 12, 48
+    pw, ph = W - L - R, H - T - B
+
+    def rng(vals):
+        lo, hi = min(vals), max(vals)
+        pad = (hi - lo) * 0.08 or 1.0
+        return lo - pad, hi + pad
+
+    x0, x1 = rng(list(d["Glukosa"]) + [b["Glukosa"]])
+    y0, y1 = rng(list(d["BMI"]) + [b["BMI"]])
+
+    def sx(v):
+        return L + (v - x0) / (x1 - x0) * pw
+
+    def sy(v):
+        return T + ph - (v - y0) / (y1 - y0) * ph
+
+    o = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Peta posisi pasien">']
+    for v in tick_bagus(x0, x1):
+        x = sx(v)
+        o.append(f'<line x1="{x:.1f}" y1="{T}" x2="{x:.1f}" y2="{T+ph}" stroke="{C["grid"]}"/>')
+        o.append(f'<text class="ct" x="{x:.1f}" y="{T+ph+18}" text-anchor="middle">{v:g}</text>')
+    for v in tick_bagus(y0, y1):
+        y = sy(v)
+        o.append(f'<line x1="{L}" y1="{y:.1f}" x2="{L+pw}" y2="{y:.1f}" stroke="{C["grid"]}"/>')
+        o.append(f'<text class="ct" x="{L-8}" y="{y+4:.1f}" text-anchor="end">{v:g}</text>')
+    o.append(f'<text class="ct" x="{L+pw/2:.0f}" y="{H-6}" text-anchor="middle">Glukosa (mg/dL)</text>')
+    o.append(f'<text class="ct" x="13" y="{T+ph/2:.0f}" text-anchor="middle" transform="rotate(-90 13 {T+ph/2:.0f})">BMI</text>')
+
+    px, py = sx(b["Glukosa"]), sy(b["BMI"])
+    terpilih = tab[tab["Terpilih"]]
+    for _, r in terpilih.iterrows():
+        row = d.iloc[int(r["Idx"])]
+        o.append(f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{sx(row["Glukosa"]):.1f}" y2="{sy(row["BMI"]):.1f}" '
+                 f'stroke="{C["ink"]}" stroke-opacity=".35" stroke-dasharray="4 4"/>')
+    for i in range(len(d)):
+        row = d.iloc[i]
+        warna = C["high"] if int(row["Kelas"]) == 1 else C["low"]
+        o.append(f'<circle cx="{sx(row["Glukosa"]):.1f}" cy="{sy(row["BMI"]):.1f}" r="6.5" fill="{warna}" stroke="#fff" stroke-width="2"/>')
+    for _, r in terpilih.iterrows():
+        row = d.iloc[int(r["Idx"])]
+        cx, cy = sx(row["Glukosa"]), sy(row["BMI"])
+        o.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="11" fill="none" stroke="{C["ink"]}" stroke-width="2"/>')
+        if h["k"] <= 7:
+            o.append(f'<text class="ct" x="{cx+13:.1f}" y="{cy-9:.1f}">{e(r["Pasien"])}</text>')
+    o.append(f'<circle class="pulse" cx="{px:.1f}" cy="{py:.1f}" r="19" fill="{C["violet"]}"/>')
+    o.append(f'<polygon points="{px:.1f},{py-11:.1f} {px+11:.1f},{py:.1f} {px:.1f},{py+11:.1f} {px-11:.1f},{py:.1f}" '
+             f'fill="{C["ink"]}" stroke="#fff" stroke-width="2"/>')
+    o.append("</svg>")
+    leg = ('<div class="legend"><span><i class="sw low"></i>Risiko rendah</span>'
+           '<span><i class="sw high"></i>Risiko tinggi</span>'
+           '<span><i class="sw ring"></i>Tetangga terpilih</span>'
+           '<span><i class="sw pat"></i>Pasien baru</span></div>')
+    return f'<div class="chartbox">{"".join(o)}</div>{leg}'
 
 
 def langkah(n, judul, deskripsi, akhir=False):
@@ -419,12 +507,11 @@ if st.session_state.flash_error:
 tab_pred, tab_data = st.tabs(["🔮 Prediksi Pasien", "📊 Kelola Dataset"])
 
 with tab_pred:
-    # Panduan Penggunaan di awal
     st.markdown(
         '<div class="guide"><b>Cara Penggunaan:</b><ol>'
         '<li>Masukkan data klinis pasien baru pada formulir di bawah.</li>'
         '<li>Tentukan nilai <b>K</b> (jumlah tetangga terdekat yang dipertimbangkan).</li>'
-        '<li>Klik tombol <b>Hitung Prediksi Risiko</b> untuk melihat proses penelusuran tetangga dan hasil akhirnya.</li>'
+        '<li>Klik tombol <b>Hitung Prediksi Risiko</b> untuk melihat proses penelusuran tetangga, grafik spasial, dan hasil akhirnya.</li>'
         '</ol></div>',
         unsafe_allow_html=True
     )
@@ -454,14 +541,11 @@ with tab_pred:
     if h is not None:
         bagian("2. Proses Perhitungan K-Nearest Neighbors")
         
-        # Langkah 1: Normalisasi Min-Max dengan rumus
         langkah(1, "Normalisasi Fitur (Min-Max)", "Setiap nilai fitur diubah ke rentang [0, 1] agar porsinya setara.")
         st.markdown(
             '<div class="guide" style="margin-top:-6px; margin-bottom:10px;">'
-            '<b>Rumus Normalisasi Min-Max:</b><br>'
-            '$$x\' = \\frac{x - x_{min}}{x_{max} - x_{min}}$$'
-            '</div>', 
-            unsafe_allow_html=True
+            '<b>Rumus Normalisasi Min-Max:</b><br>$x\' = \\frac{x - x_{min}}{x_{max} - x_{min}}$'
+            '</div>', unsafe_allow_html=True
         )
         df_norm = pd.DataFrame({
             "Fitur": FITUR,
@@ -478,14 +562,11 @@ with tab_pred:
                 for _, r in df_norm.iterrows()) + '</tbody></table></div>',
             unsafe_allow_html=True)
 
-        # Langkah 2: Jarak Euclidean dengan rumus
         langkah(2, "Hitung Jarak Euclidean", "Menghitung jarak kuadrat antara pasien baru dan seluruh pasien di dataset latih.")
         st.markdown(
             '<div class="guide" style="margin-top:-6px; margin-bottom:10px;">'
-            '<b>Rumus Jarak Euclidean:</b><br>'
-            '$$d(p, q) = \\sqrt{\\sum_{i=1}^{n} (p_i - q_i)^2}$$'
-            '</div>', 
-            unsafe_allow_html=True
+            '<b>Rumus Jarak Euclidean:</b><br>$d(p, q) = \\sqrt{\\sum_{i=1}^{n} (p_i - q_i)^2}$'
+            '</div>', unsafe_allow_html=True
         )
         t = h["tabel"].copy()
         t_headers = ["Peringkat", "ID", "Kelas Asli", "Jarak Euclidean", "Terpilih"]
@@ -502,11 +583,16 @@ with tab_pred:
             unsafe_allow_html=True)
         st.markdown(html_tetangga(h), unsafe_allow_html=True)
 
-        # Langkah 3: Voting
+        # Grafik Peta Sebaran Spasial (Scatter Plot)
+        st.markdown(
+            '<div class="sec" style="margin-top:24px">Peta Sebaran Pasien (Glukosa vs BMI)</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(svg_peta(h), unsafe_allow_html=True)
+
         langkah(3, f"Voting dari {h['k']} Tetangga Terdekat", "Menentukan mayoritas kelas dari tetangga terdekat yang terpilih.")
         st.markdown(html_voting(h), unsafe_allow_html=True)
 
-        # Langkah 4: Kesimpulan
         langkah(4, "Kesimpulan Prediksi", "Hasil akhir estimasi risiko berdasarkan algoritma KNN.", akhir=True)
         st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
 
