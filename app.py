@@ -14,7 +14,6 @@ import streamlit as st
 FITUR = ["Usia", "BMI", "Glukosa", "Tekanan Darah", "Riwayat Keluarga"]
 KOLOM = ["Pasien"] + FITUR + ["Kelas"]
 LABEL = {0: "Rendah", 1: "Tinggi"}
-LABEL_RIWAYAT = {0: "Tidak Ada (0)", 1: "Ada (1)"}
 
 DATA_AWAL = pd.DataFrame(
     [
@@ -608,7 +607,7 @@ with tab_pred:
         langkah(4, "Kesimpulan Prediksi", "Hasil akhir estimasi risiko berdasarkan algoritma KNN.", akhir=True)
         st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
 
-5        bagian("Simpan Hasil ke Dataset")
+        bagian("Simpan Hasil ke Dataset")
         st.radio("Pilih kelas untuk disimpan ke dataset:", [0, 1], index=h["pred"], horizontal=True,
                  format_func=lambda x: f"Risiko {LABEL[x]}", key="simpan_kelas")
         st.button("Simpan Pasien Ini ke Dataset Latih", on_click=cb_simpan)
