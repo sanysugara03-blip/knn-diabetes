@@ -373,44 +373,4 @@ def html_tetangga(h):
     chips = ""
     for _, r in h["tabel"][h["tabel"]["Terpilih"]].iterrows():
         c = "high" if int(r["Kelas"]) == 1 else "low"
-        chips += (f'<div class="nb"><div class="dot {c}">{int(r["Peringkat"])}</div>'
-                  f'<div class="id">{e(r["Pasien"])}</div><div class="jr">{r["Jarak"]:.3f}</div></div>')
-    return f'<div class="strip">{chips}</div>'
-
-
-def html_voting(h):
-    p1 = h["skor"] * 100
-    p0 = 100 - p1
-    return (f'<div class="votebar"><div class="low" style="width:{p0:.1f}%"></div>'
-            f'<div class="high" style="width:{p1:.1f}%"></div></div>'
-            f'<div class="votelabel"><span class="l">Rendah: {h["n0"]} suara</span>'
-            f'<span class="h">Tinggi: {h["n1"]} suara</span></div>')
-
-
-def html_kesimpulan(h):
-    pred = h["pred"]
-    c = "high" if pred == 1 else "low"
-    suara = h["n1"] if pred == 1 else h["n0"]
-    skor = h["skor"] * 100
-    ekstra = " Suara diberi bobot sesuai kedekatan." if h["berbobot"] else ""
-    return (f'<div class="verdict {c}"><div class="v-who">Hasil untuk {e(h["nama"])}</div>'
-            f'<div class="v-title">Risiko {LABEL[pred]}</div>'
-            f'<div class="v-sub">{suara} dari {h["k"]} pasien terdekat termasuk kelas Risiko {LABEL[pred]}.{ekstra}</div>'
-            f'<div class="meter"><div class="meter-track"><span class="meter-pin" style="left:{skor:.1f}%"></span></div>'
-            f'<div class="meter-scale"><span>Rendah</span><span>Skor risiko tinggi: <b>{skor:.0f}%</b></span><span>Tinggi</span></div></div></div>'
-            '<div class="disclaimer">Hasil ini alat bantu keputusan, bukan diagnosis medis.</div>')
-
-
-def laporan_teks(h):
-    b = h["baru"]
-    baris = [
-        "LAPORAN PREDIKSI RISIKO DIABETES (KNN)",
-        f"Waktu   : {h['waktu']}",
-        f"Pasien  : {h['nama']}",
-        "",
-        "Data input",
-        f"- Usia            : {fmt(b['Usia'])} tahun",
-        f"- BMI             : {fmt(b['BMI'])}",
-        f"- Glukosa         : {fmt(b['Glukosa'])} mg/dL",
-        f"- Tekanan darah   : {fmt(b['Tekanan Darah'])} mmHg",
-        f"- Riwayat keluarga: {'Ada' if int(b['Riwayat Keluarga']) == 1 else 'Tidak ada'}",
+        chips += (f'<div class="nb
