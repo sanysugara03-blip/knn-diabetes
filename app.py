@@ -735,9 +735,6 @@ def tampilkan_hasil(h):
     st.markdown(html_catatan(b), unsafe_allow_html=True)
     catatan("Kategori memakai acuan umum: BMI menurut WHO, glukosa puasa, dan tekanan sistolik. Ini informasi tambahan dan tidak memengaruhi hitungan KNN.")
 
-    bagian("Bagaimana jika nilai K diganti?")
-    st.markdown(html_k_alternatif(h), unsafe_allow_html=True)
-
     bagian("Posisi pasien baru")
     st.markdown(svg_peta(h), unsafe_allow_html=True)
     catatan("Peta hanya memakai dua dari lima fitur (glukosa dan BMI), jadi jarak di peta tidak persis sama dengan jarak hitungan.")
@@ -843,57 +840,6 @@ def render_prediksi():
 
     if s.hasil is not None:
         tampilkan_hasil(s.hasil)
-
-
-# ============================================================
-# TAB: ANALISIS
-# ============================================================
-def render_analisis():
-    s = st.session_state
-    data = s.data
-
-    langkah("A", "Seberapa dapat dipercaya model ini?", "Uji silang leave-one-out: tiap pasien di dataset ditebak memakai semua pasien lain, lalu hasilnya dicocokkan dengan kelas aslinya.")
-    hasil = evaluasi_loocv(data, 9, bool(s.in_bobot), s.in_metrik)
-    kb, ab = k_terbaik(hasil)
-    ks = sorted(hasil)
-    kcur = min(max(int(s.in_k), 1), ks[-1])
-    tp, tn, fp, fn = hasil[kcur]
-    total = tp + tn + fp + fn
-    akurasi = (tp + tn) / total
-    sens = f"{tp / (tp + fn) * 100:.0f}%" if (tp + fn) else "-"
-    spes = f"{tn / (tn + fp) * 100:.0f}%" if (tn + fp) else "-"
-    f1 = f"{2 * tp / (2 * tp + fp + fn) * 100:.0f}%" if (2 * tp + fp + fn) else "-"
-
-    bagian(f"Hasil untuk K = {kcur}")
-    st.markdown(
-        '<div class="kpis">'
-        f'<div class="kpi"><b>{akurasi*100:.0f}%</b><span>Akurasi: tebakan yang benar</span></div>'
-        f'<div class="kpi"><b>{sens}</b><span>Sensitivitas: risiko tinggi yang terdeteksi</span></div>'
-        f'<div class="kpi"><b>{spes}</b><span>Spesifisitas: risiko rendah yang terdeteksi</span></div>'
-        f'<div class="kpi"><b>{f1}</b><span>Skor F1: keseimbangan presisi dan sensitivitas</span></div></div>',
-        unsafe_allow_html=True)
-
-    bagian("Tabel kesalahan (confusion matrix)")
-    st.markdown(tabel_html(
-        ["", "Ditebak rendah", "Ditebak tinggi"],
-        [["<b>Aslinya rendah</b>", str(tn), str(fp)], ["<b>Aslinya tinggi</b>", str(fn), str(tp)]]),
-        unsafe_allow_html=True)
-
-    bagian("Akurasi untuk setiap nilai K")
-    st.markdown(svg_kurva(ks, [(hasil[k][0] + hasil[k][1]) / sum(hasil[k]) for k in ks], kcur), unsafe_allow_html=True)
-    catatan(f"Titik besar adalah K yang sedang dipilih di tab Prediksi. K terbaik menurut uji silang: {kb} ({ab * 100:.0f}%). Dataset masih kecil, jadi akurasi yang tinggi belum tentu berlaku untuk pasien sungguhan.")
-
-    bagian("Rata-rata nilai tiap kelas")
-    rows = []
-    for f in FITUR:
-        m0 = data.loc[data["Kelas"] == 0, f].mean()
-        m1 = data.loc[data["Kelas"] == 1, f].mean()
-        if f == "Riwayat Keluarga":
-            rows.append([e(f), f"{m0*100:.0f}% ada", f"{m1*100:.0f}% ada"])
-        else:
-            rows.append([e(f), f"{m0:.1f}", f"{m1:.1f}"])
-    rows.append(["<b>Jumlah pasien</b>", f"<b>{int((data['Kelas'] == 0).sum())}</b>", f"<b>{int((data['Kelas'] == 1).sum())}</b>"])
-    st.markdown(tabel_html(["Fitur", "Risiko rendah", "Risiko tinggi"], rows), unsafe_allow_html=True)
 
 
 # ============================================================
