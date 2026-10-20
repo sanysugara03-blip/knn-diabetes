@@ -953,7 +953,7 @@ def main():
     data = st.session_state.data
     st.markdown(html_hero(len(data), int((data["Kelas"] == 1).sum())), unsafe_allow_html=True)
 
-    t1, t2, t3, t4 = st.tabs(["Prediksi", "Data", "Panduan"])
+    t1, t2, t3, = st.tabs(["Prediksi", "Data", "Panduan"])
     with t1:
         render_prediksi()
     with t2:
