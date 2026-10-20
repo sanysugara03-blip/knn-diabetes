@@ -14,6 +14,7 @@ import streamlit as st
 FITUR = ["Usia", "BMI", "Glukosa", "Tekanan Darah", "Riwayat Keluarga"]
 KOLOM = ["Pasien"] + FITUR + ["Kelas"]
 LABEL = {0: "Rendah", 1: "Tinggi"}
+LABEL_RIWAYAT = {0: "Tidak Ada (0)", 1: "Ada (1)"}
 
 DATA_AWAL = pd.DataFrame(
     [
@@ -449,11 +450,26 @@ def cb_tambah():
     s.flash_data = f"Pasien {pid} ditambahkan. Dataset sekarang berisi {len(s.data)} pasien."
 
 
-def cb_hapus():
+def cb_hapus_terakhir():
     s = st.session_state
     if len(s.data) > 3:
         s.data = s.data.iloc[:-1].reset_index(drop=True)
         s.flash_data = "Pasien terakhir dihapus."
+
+
+def cb_hapus_pilih():
+    s = st.session_state
+    target_id = s.get("pilih_hapus_pasien")
+    if len(s.data) <= 3:
+        s.flash_error = "Dataset minimal harus memiliki 3 pasien."
+        return
+    if target_id:
+        awal_len = len(s.data)
+        s.data = s.data[s.data["Pasien"] != target_id].reset_index(drop=True)
+        if len(s.data) < awal_len:
+            s.flash_data = f"Pasien {target_id} berhasil dihapus dari dataset."
+        else:
+            s.flash_error = f"Pasien {target_id} tidak ditemukan."
 
 
 def cb_reset():
@@ -592,7 +608,7 @@ with tab_pred:
         langkah(4, "Kesimpulan Prediksi", "Hasil akhir estimasi risiko berdasarkan algoritma KNN.", akhir=True)
         st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
 
-        bagian("Simpan Hasil ke Dataset")
+5        bagian("Simpan Hasil ke Dataset")
         st.radio("Pilih kelas untuk disimpan ke dataset:", [0, 1], index=h["pred"], horizontal=True,
                  format_func=lambda x: f"Risiko {LABEL[x]}", key="simpan_kelas")
         st.button("Simpan Pasien Ini ke Dataset Latih", on_click=cb_simpan)
@@ -606,9 +622,40 @@ with tab_pred:
 with tab_data:
     bagian("Manajemen Dataset Latih")
     st.write(f"Total pasien aktif di dataset: **{len(data_kini)}**")
-    tdata = data_kini.copy()
-    tdata["Kelas"] = tdata["Kelas"].map(LABEL)
-    st.dataframe(tdata, use_container_width=True, hide_index=True)
+    
+    # Keterangan Informasi Kode Kolom
+    st.markdown(
+        '<div class="guide" style="font-size:0.9rem; padding: 12px 16px; margin-bottom: 12px;">'
+        '<b>Keterangan Kolom Dataset:</b><br>'
+        '• <b>Riwayat Keluarga:</b> <code>0</code> = Tidak Ada Risiko, <code>1</code> = Ada Risiko.<br>'
+        '• <b>Kelas Risiko:</b> Rendah (0) atau Tinggi (1).'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    # Render Tabel Dataset dengan HTML agar rapi dan sejajar
+    t_tampil = data_kini.copy()
+    t_tampil["Riwayat Keluarga"] = t_tampil["Riwayat Keluarga"].map(lambda x: f"{x} ({'Ada' if int(x)==1 else 'Tidak Ada'})")
+    t_tampil["Kelas"] = t_tampil["Kelas"].map(lambda x: f'<span class="pill {"high" if int(x)==1 else "low"}">Risiko {LABEL[int(x)]}</span>')
+    
+    html_rows = []
+    for _, row in t_tampil.iterrows():
+        html_rows.append(
+            f"<tr><td><b>{e(row['Pasien'])}</b></td>"
+            f"<td>{fmt(row['Usia'])}</td>"
+            f"<td>{fmt(row['BMI'])}</td>"
+            f"<td>{fmt(row['Glukosa'])}</td>"
+            f"<td>{fmt(row['Tekanan Darah'])}</td>"
+            f"<td>{row['Riwayat Keluarga']}</td>"
+            f"<td>{row['Kelas']}</td></tr>"
+        )
+    
+    st.markdown(
+        f'<div class="tbl-wrap scroll"><table class="tbl"><thead><tr>'
+        f'<th>Pasien</th><th>Usia</th><th>BMI</th><th>Glukosa</th><th>Tekanan Darah</th><th>Riwayat Keluarga</th><th>Kelas Risiko</th>'
+        f'</tr></thead><tbody>' + "".join(html_rows) + '</tbody></table></div>',
+        unsafe_allow_html=True
+    )
 
     bagian("Tambah Pasien Baru")
     with st.form("f_tambah"):
@@ -622,9 +669,21 @@ with tab_data:
                                             format_func=lambda x: LABEL[x], key="inp_k")
         st.form_submit_button("Tambah ke Dataset", on_click=cb_tambah)
 
-    c1, c2 = st.columns(2)
-    c1.button("Hapus Pasien Terakhir", on_click=cb_hapus, disabled=len(data_kini) <= 3)
-    c2.button("Reset ke Dataset Awal (10 Pasien)", on_click=cb_reset)
+    bagian("Hapus Pasien dari Dataset")
+    col_d1, col_d2 = st.columns(2)
+    
+    with col_d1:
+        st.markdown("**Hapus Berdasarkan ID Pasien**")
+        daftar_id = list(data_kini["Pasien"].astype(str))
+        st.selectbox("Pilih ID Pasien yang ingin dihapus:", daftar_id, key="pilih_hapus_pasien")
+        st.button("Hapus Pasien Terpilih", on_click=cb_hapus_pilih, disabled=len(data_kini) <= 3)
+
+    with col_d2:
+        st.markdown("**Aksi Cepat Lainnya**")
+        st.write("Hapus pasien yang paling terakhir ditambahkan:")
+        st.button("Hapus Pasien Terakhir", on_click=cb_hapus_terakhir, disabled=len(data_kini) <= 3)
+        st.write("Kembalikan seluruh dataset ke pengaturan awal:")
+        st.button("Reset ke Dataset Awal (10 Pasien)", on_click=cb_reset)
 
     bagian("Impor & Ekspor CSV")
     st.download_button("Unduh Dataset sebagai CSV", data=data_kini.to_csv(index=False).encode("utf-8"),
