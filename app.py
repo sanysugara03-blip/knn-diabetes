@@ -31,11 +31,6 @@ DATA_AWAL = pd.DataFrame(
     columns=KOLOM,
 )
 
-CONTOH = {
-    "rendah": {"in_usia": 26, "in_bmi": 22.0, "in_glu": 92, "in_tensi": 112, "in_riw": "Tidak ada"},
-    "tinggi": {"in_usia": 52, "in_bmi": 31.0, "in_glu": 150, "in_tensi": 140, "in_riw": "Ada"},
-}
-
 C = {"ink": "#1D1B4C", "violet": "#5B4FD6", "low": "#13805F", "high": "#D63C50",
      "soft": "#5E5B82", "line": "#E1DEF3", "grid": "#ECEAF7", "amber": "#FFC857"}
 
@@ -142,7 +137,7 @@ def baca_csv(isi):
 
 
 # ============================================================
-# GAYA (CSS) & KOMPONEN UI AWAL
+# GAYA (CSS) & KOMPONEN UI
 # ============================================================
 CSS = """
 <style>
@@ -228,6 +223,11 @@ table.tbl tr.pick td:first-child{box-shadow:inset 4px 0 0 var(--violet);}
 .meter-scale{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:.84rem;color:var(--soft);}
 .meter-scale b{color:var(--ink);}
 .disclaimer{font-size:.84rem;color:var(--soft);margin:10px 2px 0;}
+
+.guide{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px;line-height:1.6;}
+.guide b{color:var(--ink);}
+.guide ol,.guide ul{margin:8px 0 0 1.1rem;padding:0;}
+.guide li{margin:4px 0;}
 </style>
 """
 
@@ -304,9 +304,10 @@ def html_kesimpulan(h):
     c = "high" if pred == 1 else "low"
     suara = h["n1"] if pred == 1 else h["n0"]
     skor = h["skor"] * 100
+    ekstra = " Suara diberi bobot sesuai kedekatan." if h["berbobot"] else ""
     return (f'<div class="verdict {c}"><div class="v-who">Hasil untuk {e(h["nama"])}</div>'
             f'<div class="v-title">Risiko {LABEL[pred]}</div>'
-            f'<div class="v-sub">{suara} dari {h["k"]} pasien terdekat termasuk kelas Risiko {LABEL[pred]}.</div>'
+            f'<div class="v-sub">{suara} dari {h["k"]} pasien terdekat termasuk kelas Risiko {LABEL[pred]}.{ekstra}</div>'
             f'<div class="meter"><div class="meter-track"><span class="meter-pin" style="left:{skor:.1f}%"></span></div>'
             f'<div class="meter-scale"><span>Rendah</span><span>Skor risiko tinggi: <b>{skor:.0f}%</b></span><span>Tinggi</span></div></div></div>'
             '<div class="disclaimer">Hasil ini alat bantu keputusan, bukan diagnosis medis.</div>')
@@ -326,7 +327,7 @@ def laporan_teks(h):
         f"- Tekanan darah   : {fmt(b['Tekanan Darah'])} mmHg",
         f"- Riwayat keluarga: {'Ada' if int(b['Riwayat Keluarga']) == 1 else 'Tidak ada'}",
         "",
-        f"Parameter: K = {h['k']}",
+        f"Parameter: K = {h['k']}, voting {'berbobot jarak' if h['berbobot'] else 'biasa'}",
         "Tetangga terdekat:",
     ]
     for _, r in h["tabel"][h["tabel"]["Terpilih"]].iterrows():
@@ -357,7 +358,7 @@ def cb_tambah():
     s = st.session_state
     pid = tambah_pasien(s.f_usia, s.f_bmi, s.f_glu, s.f_tensi,
                         1 if s.f_riw == "Ada" else 0, int(s.f_kelas))
-    s.flash_data = f"Pasien {pid} ditambahkan."
+    s.flash_data = f"Pasien {pid} ditambahkan. Dataset sekarang berisi {len(s.data)} pasien."
 
 
 def cb_hapus():
@@ -418,6 +419,16 @@ if st.session_state.flash_error:
 tab_pred, tab_data = st.tabs(["🔮 Prediksi Pasien", "📊 Kelola Dataset"])
 
 with tab_pred:
+    # Panduan Penggunaan di awal
+    st.markdown(
+        '<div class="guide"><b>Cara Penggunaan:</b><ol>'
+        '<li>Masukkan data klinis pasien baru pada formulir di bawah.</li>'
+        '<li>Tentukan nilai <b>K</b> (jumlah tetangga terdekat yang dipertimbangkan).</li>'
+        '<li>Klik tombol <b>Hitung Prediksi Risiko</b> untuk melihat proses penelusuran tetangga dan hasil akhirnya.</li>'
+        '</ol></div>',
+        unsafe_allow_html=True
+    )
+
     bagian("1. Masukkan data pasien baru")
     with st.form("form_pred"):
         nama = st.text_input("Nama atau Kode Pasien", value="Pasien 1")
@@ -442,7 +453,16 @@ with tab_pred:
     h = st.session_state.hasil
     if h is not None:
         bagian("2. Proses Perhitungan K-Nearest Neighbors")
+        
+        # Langkah 1: Normalisasi Min-Max dengan rumus
         langkah(1, "Normalisasi Fitur (Min-Max)", "Setiap nilai fitur diubah ke rentang [0, 1] agar porsinya setara.")
+        st.markdown(
+            '<div class="guide" style="margin-top:-6px; margin-bottom:10px;">'
+            '<b>Rumus Normalisasi Min-Max:</b><br>'
+            '$$x\' = \\frac{x - x_{min}}{x_{max} - x_{min}}$$'
+            '</div>', 
+            unsafe_allow_html=True
+        )
         df_norm = pd.DataFrame({
             "Fitur": FITUR,
             "Min": [h["fmin"][f] for f in FITUR],
@@ -458,7 +478,15 @@ with tab_pred:
                 for _, r in df_norm.iterrows()) + '</tbody></table></div>',
             unsafe_allow_html=True)
 
+        # Langkah 2: Jarak Euclidean dengan rumus
         langkah(2, "Hitung Jarak Euclidean", "Menghitung jarak kuadrat antara pasien baru dan seluruh pasien di dataset latih.")
+        st.markdown(
+            '<div class="guide" style="margin-top:-6px; margin-bottom:10px;">'
+            '<b>Rumus Jarak Euclidean:</b><br>'
+            '$$d(p, q) = \\sqrt{\\sum_{i=1}^{n} (p_i - q_i)^2}$$'
+            '</div>', 
+            unsafe_allow_html=True
+        )
         t = h["tabel"].copy()
         t_headers = ["Peringkat", "ID", "Kelas Asli", "Jarak Euclidean", "Terpilih"]
         t_rows = []
@@ -474,9 +502,11 @@ with tab_pred:
             unsafe_allow_html=True)
         st.markdown(html_tetangga(h), unsafe_allow_html=True)
 
+        # Langkah 3: Voting
         langkah(3, f"Voting dari {h['k']} Tetangga Terdekat", "Menentukan mayoritas kelas dari tetangga terdekat yang terpilih.")
         st.markdown(html_voting(h), unsafe_allow_html=True)
 
+        # Langkah 4: Kesimpulan
         langkah(4, "Kesimpulan Prediksi", "Hasil akhir estimasi risiko berdasarkan algoritma KNN.", akhir=True)
         st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
 
