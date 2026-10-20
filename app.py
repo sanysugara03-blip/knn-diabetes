@@ -772,11 +772,7 @@ def tampilkan_hasil(h):
             catatan("Suara diberi bobot 1 dibagi jarak, jadi tetangga yang lebih dekat berpengaruh lebih besar. Panjang batang mengikuti bobot tersebut.")
         elif h["n0"] == h["n1"]:
             catatan("Suara seri, sehingga kelas diambil dari pasien yang paling dekat.")
-
-        langkah("D", "Bandingkan profil nilai", "Nilai dibandingkan pada skala 0 sampai 1 agar adil untuk semua fitur.")
-        st.markdown(svg_profil(h), unsafe_allow_html=True)
-        catatan("Jika batang pasien lebih dekat ke rata-rata satu kelas, pasien lebih mirip dengan kelas itu pada fitur tersebut.")
-
+            
     bagian("Simpan atau unduh")
     with st.container(border=True):
         if h["tersimpan"]:
