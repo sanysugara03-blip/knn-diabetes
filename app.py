@@ -465,6 +465,19 @@ def laporan_teks(h):
 
 
 # ============================================================
+# INISIALISASI SESSION STATE
+# ============================================================
+if "data" not in st.session_state:
+    st.session_state.data = DATA_AWAL.copy()
+if "hasil" not in st.session_state:
+    st.session_state.hasil = None
+if "flash_data" not in st.session_state:
+    st.session_state.flash_data = None
+if "flash_error" not in st.session_state:
+    st.session_state.flash_error = None
+
+
+# ============================================================
 # CALLBACK
 # ============================================================
 def cb_simpan():
@@ -531,15 +544,6 @@ def cb_muat():
 # ============================================================
 st.set_page_config(page_title="Cek Risiko Diabetes (KNN)", page_icon="🩺", layout="centered")
 st.markdown(CSS, unsafe_allow_html=True)
-
-if "data" not in st.session_state:
-    st.session_state.data = DATA_AWAL.copy()
-if "hasil" not in st.session_state:
-    st.session_state.hasil = None
-if "flash_data" not in st.session_state:
-    st.session_state.flash_data = None
-if "flash_error" not in st.session_state:
-    st.session_state.flash_error = None
 
 data_kini = st.session_state.data
 n_tinggi = int((data_kini["Kelas"] == 1).sum())
@@ -697,4 +701,28 @@ with tab_data:
         st.session_state.f_bmi = c2.number_input("BMI", 10.0, 60.0, 24.0, key="inp_b")
         st.session_state.f_glu = c1.number_input("Glukosa", 40, 400, 100, key="inp_g")
         st.session_state.f_tensi = c2.number_input("Tekanan Darah", 60, 250, 120, key="inp_t")
-        st.session_state.f_
+        st.session_state.f_riw = st.radio("Riwayat Keluarga", ["Tidak ada", "Ada"], horizontal=True, key="inp_r")
+        st.session_state.f_kelas = st.radio("Kelas Risiko", [0, 1], horizontal=True,
+                                            format_func=lambda x: LABEL[x], key="inp_k")
+        st.form_submit_button("Tambah ke Dataset", on_click=cb_tambah)
+
+    bagian("Hapus Pasien dari Dataset")
+    col_d1, col_d2 = st.columns(2)
+    
+    with col_d1:
+        st.markdown("**Hapus Berdasarkan ID Pasien**")
+        daftar_id = list(data_kini["Pasien"].astype(str))
+        st.selectbox("Pilih ID Pasien yang ingin dihapus:", daftar_id, key="pilih_hapus_pasien")
+        st.button("Hapus Pasien Terpilih", on_click=cb_hapus_pilih, disabled=len(data_kini) <= 3)
+
+    with col_d2:
+        st.markdown("**Aksi Cepat Lainnya**")
+        st.write("Hapus pasien yang paling terakhir ditambahkan:")
+        st.button("Hapus Pasien Terakhir", on_click=cb_hapus_terakhir, disabled=len(data_kini) <= 3)
+        st.write("Kembalikan seluruh dataset ke pengaturan awal:")
+        st.button("Reset ke Dataset Awal (10 Pasien)", on_click=cb_reset)
+
+    bagian("Impor & Ekspor CSV")
+    st.download_button("Unduh Dataset sebagai CSV", data=data_kini.to_csv(index=False).encode("utf-8"),
+                       file_name="dataset_diabetes_knn.csv", mime="text/csv")
+    st.file_uploader("Unggah Dataset CSV", type="csv", key="csv_up", on_change=cb_muat)
