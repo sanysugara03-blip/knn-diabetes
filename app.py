@@ -31,14 +31,20 @@ DATA_AWAL = pd.DataFrame(
     columns=KOLOM,
 )
 
-C = {"ink": "#1D1B4C", "violet": "#5B4FD6", "low": "#13805F", "high": "#D63C50",
-     "soft": "#5E5B82", "line": "#E1DEF3", "grid": "#ECEAF7", "amber": "#FFC857"}
+CONTOH = {
+    "rendah": {"in_usia": 26, "in_bmi": 22.0, "in_glu": 92, "in_tensi": 112, "in_riw": "Tidak ada"},
+    "tinggi": {"in_usia": 52, "in_bmi": 31.0, "in_glu": 150, "in_tensi": 140, "in_riw": "Ada"},
+}
+
+C = {"ink": "#3B3556", "violet": "#7B68B5", "low": "#5E9C86", "high": "#D9778A",
+     "soft": "#716A8A", "line": "#ECE6F2", "grid": "#F1ECF6", "amber": "#E8C07D"}
 
 
 # ============================================================
 # INTI ALGORITMA KNN
 # ============================================================
 def normalisasi(data, pasien):
+    """Min-Max: x' = (x - min) / (max - min)."""
     fmin = data[FITUR].min()
     fmax = data[FITUR].max()
     rentang = (fmax - fmin).replace(0, 1)
@@ -47,7 +53,23 @@ def normalisasi(data, pasien):
     return fmin, fmax, norm_latih, norm_baru
 
 
+def jarak_dari(selisih, metrik="Euclidean"):
+    """Jarak tiap baris selisih: Euclidean (akar jumlah kuadrat) atau Manhattan (jumlah mutlak)."""
+    if metrik == "Manhattan":
+        return np.abs(selisih).sum(axis=1)
+    return np.sqrt((selisih ** 2).sum(axis=1))
+
+
+def k_terbaik(hasil):
+    """K dengan akurasi uji silang tertinggi (utamakan ganjil, lalu yang terkecil)."""
+    akur = {k: (v[0] + v[1]) / sum(v) for k, v in hasil.items()}
+    ganjil = {k: a for k, a in akur.items() if k % 2 == 1} or akur
+    puncak = max(ganjil.values())
+    return min(k for k, a in ganjil.items() if a == puncak), puncak
+
+
 def voting(kelas, jarak, k, berbobot):
+    """kelas dan jarak sudah terurut dari yang terdekat. Mengembalikan (pred, n0, n1, skor)."""
     kel = np.asarray(kelas[:k])
     jr = np.asarray(jarak[:k], dtype=float)
     n1 = int((kel == 1).sum())
@@ -64,17 +86,17 @@ def voting(kelas, jarak, k, berbobot):
             pred = 1
         elif n0 > n1:
             pred = 0
-        else:
+        else:  # seri: ikuti tetangga paling dekat
             pred = int(kel[0])
     return pred, n0, n1, float(skor)
 
 
-def hitung_knn(data, pasien, k, berbobot=False):
+def hitung_knn(data, pasien, k, berbobot=False, metrik="Euclidean"):
     data = data.reset_index(drop=True)
     k = max(1, min(int(k), len(data)))
     fmin, fmax, norm_latih, norm_baru = normalisasi(data, pasien)
     vektor = np.array([norm_baru[f] for f in FITUR])
-    jarak = np.sqrt(((norm_latih.to_numpy(dtype=float) - vektor) ** 2).sum(axis=1))
+    jarak = jarak_dari(norm_latih.to_numpy(dtype=float) - vektor, metrik)
 
     tabel = pd.DataFrame({
         "Idx": np.arange(len(data)),
@@ -87,12 +109,44 @@ def hitung_knn(data, pasien, k, berbobot=False):
 
     pred, n0, n1, skor = voting(tabel["Kelas"].to_numpy(), tabel["Jarak"].to_numpy(), k, berbobot)
 
+    kls = data["Kelas"].astype(int)
+    prof = {}
+    for c in (0, 1):
+        m = norm_latih[kls == c].mean()
+        prof[c] = {f: (0.0 if pd.isna(m[f]) else float(m[f])) for f in FITUR}
+
     return {
-        "baru": dict(pasien), "k": k, "berbobot": bool(berbobot), "data": data.copy(),
+        "baru": dict(pasien), "k": k, "berbobot": bool(berbobot), "metrik": metrik, "data": data.copy(),
         "tabel": tabel, "fmin": fmin, "fmax": fmax, "norm_latih": norm_latih,
-        "norm_baru": norm_baru, "pred": pred, "n0": n0, "n1": n1, "skor": skor,
+        "norm_baru": norm_baru, "prof0": prof[0], "prof1": prof[1],
+        "pred": pred, "n0": n0, "n1": n1, "skor": skor,
         "waktu": waktu_sekarang(), "tersimpan": None,
     }
+
+
+@st.cache_data(show_spinner=False)
+def evaluasi_loocv(data, kmaks, berbobot, metrik="Euclidean"):
+    """Leave-one-out: tiap pasien diprediksi memakai semua pasien lain.
+    Mengembalikan {k: [tp, tn, fp, fn]} dengan kelas Tinggi sebagai positif."""
+    X = data[FITUR].to_numpy(dtype=float)
+    y = data["Kelas"].to_numpy(dtype=int)
+    n = len(y)
+    ks = list(range(1, min(kmaks, n - 1) + 1))
+    hasil = {k: [0, 0, 0, 0] for k in ks}
+    for i in range(n):
+        mask = np.arange(n) != i
+        Xt, yt = X[mask], y[mask]
+        mn, mx = Xt.min(axis=0), Xt.max(axis=0)
+        r = np.where(mx - mn == 0, 1.0, mx - mn)
+        d = jarak_dari((Xt - mn) / r - (X[i] - mn) / r, metrik)
+        urut = np.argsort(d, kind="stable")
+        for k in ks:
+            pred, _, _, _ = voting(yt[urut], d[urut], k, berbobot)
+            if y[i] == 1:
+                hasil[k][0 if pred == 1 else 3] += 1
+            else:
+                hasil[k][1 if pred == 0 else 2] += 1
+    return hasil
 
 
 def waktu_sekarang():
@@ -137,84 +191,116 @@ def baca_csv(isi):
 
 
 # ============================================================
-# GAYA (CSS) & GRAFIK SVG
+# KATEGORI KLINIS (informasi tambahan, tidak memengaruhi KNN)
+# ============================================================
+def kategori_bmi(v):
+    if v < 18.5:
+        return "Kurus", "info"
+    if v < 25:
+        return "Normal", "ok"
+    if v < 30:
+        return "Berat badan berlebih", "warn"
+    return "Obesitas", "bad"
+
+
+def kategori_glukosa(v):
+    if v < 100:
+        return "Normal", "ok"
+    if v < 126:
+        return "Prediabetes", "warn"
+    return "Rentang diabetes", "bad"
+
+
+def kategori_tensi(v):
+    if v < 120:
+        return "Normal", "ok"
+    if v < 140:
+        return "Meningkat", "warn"
+    return "Tinggi", "bad"
+
+
+# ============================================================
+# GAYA (CSS)
 # ============================================================
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap');
-:root{--ink:#1D1B4C;--ink2:#2E2B7A;--violet:#5B4FD6;--violet-d:#463BB5;--lav:#EEECFB;--bg:#F6F5FC;--line:#E1DEF3;--soft:#5E5B82;
---low:#13805F;--low-bg:#E2F5EE;--low-d:#0E5F46;--high:#D63C50;--high-bg:#FCEAED;--high-d:#A3283A;
---warn-bg:#FDF1D8;--warn-d:#7A5207;--info-bg:#E8EEFB;--info-d:#27468F;--amber:#FFC857;}
+@import url('https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap');
+:root{--ink:#3B3556;--violet:#7B68B5;--violet-d:#5F4E96;--lav:#F3EEF9;--bg:#FBF8FC;--line:#ECE6F2;--soft:#716A8A;
+--low:#5E9C86;--low-bg:#E8F3EE;--low-d:#35705C;--high:#D9778A;--high-bg:#FBEAEE;--high-d:#A04458;
+--warn-bg:#FBF1DE;--warn-d:#7A5A1E;--info-bg:#EEF0FA;--info-d:#4A5A94;--amber:#E8C07D;
+--shadow:0 1px 2px rgba(59,53,86,.04),0 8px 22px rgba(59,53,86,.05);}
 .stApp,[data-testid="stAppViewContainer"]{background:var(--bg);color:var(--ink);}
 .stApp,.stApp p,.stApp label,.stApp li,.stApp input,.stApp textarea,.stApp button{font-family:'Albert Sans',system-ui,-apple-system,'Segoe UI',sans-serif;}
-.stApp h1,.stApp h2,.stApp h3{font-family:'Sora','Albert Sans',sans-serif;color:var(--ink);letter-spacing:-.01em;}
+.stApp h1,.stApp h2,.stApp h3{font-family:'Playfair Display',Georgia,serif;color:var(--ink);font-weight:600;}
 header[data-testid="stHeader"]{background:transparent;}
-.block-container{max-width:820px;padding:1.2rem 1rem 4rem;}
+.block-container{max-width:760px;padding:1.4rem 1rem 4rem;}
 #MainMenu,footer{visibility:hidden;}
 
-.hero{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:linear-gradient(135deg,#1D1B4C 0%,#2E2B7A 70%,#3A35A0 100%);color:#fff;border-radius:22px;padding:26px 26px 24px;margin-bottom:14px;}
+.hero{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:linear-gradient(135deg,#F1EAF8 0%,#FBEAF0 100%);border:1px solid var(--line);border-radius:26px;padding:30px 28px 26px;margin-bottom:18px;}
 .hero-text{flex:1 1 300px;min-width:0;}
-.hero-title{font-family:'Sora',sans-serif;font-size:2rem;line-height:1.12;font-weight:700;margin:0 0 10px;color:#fff;}
-.hero-sub{margin:0;color:#D5D3F5;font-size:1rem;line-height:1.55;max-width:46ch;}
+.hero-title{font-family:'Playfair Display',Georgia,serif;font-size:2.15rem;line-height:1.15;font-weight:600;margin:0 0 10px;color:var(--ink);}
+.hero-sub{margin:0;color:var(--soft);font-size:1rem;line-height:1.6;max-width:46ch;}
 .hero-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}
-.hero-pill{background:rgba(255,255,255,.13);border-radius:999px;padding:5px 13px;font-size:.86rem;color:#fff;}
-.hero-art{flex:0 0 190px;width:190px;max-width:100%;}
+.hero-pill{background:rgba(255,255,255,.8);border:1px solid var(--line);border-radius:999px;padding:5px 14px;font-size:.85rem;color:var(--ink);}
+.hero-art{flex:0 0 180px;width:180px;max-width:100%;}
 .hero-art svg{width:100%;height:auto;display:block;}
 
-.stTabs [data-baseweb="tab-list"]{gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;}
-.stTabs [data-baseweb="tab"]{height:46px;padding:0 14px;color:var(--soft);font-weight:600;}
-.stTabs [aria-selected="true"]{color:var(--violet-d);}
+.stTabs [data-baseweb="tab-list"]{gap:6px;border-bottom:1px solid var(--line);overflow-x:auto;}
+.stTabs [data-baseweb="tab"]{height:46px;padding:0 14px;color:var(--soft);font-weight:500;}
+.stTabs [aria-selected="true"]{color:var(--violet-d);font-weight:600;}
 .stTabs [data-baseweb="tab-highlight"]{background-color:var(--violet);}
 
-div[data-testid="stVerticalBlockBorderWrapper"]{border-color:var(--line) !important;border-radius:16px;}
+div[data-testid="stVerticalBlockBorderWrapper"],[data-testid="stExpander"]{border-color:var(--line) !important;border-radius:18px;background:#fff;box-shadow:var(--shadow);}
 .stNumberInput label,.stTextInput label,.stSlider label,.stRadio>label{color:var(--soft);font-weight:500;}
 
-.stButton>button,.stDownloadButton>button{width:100%;border-radius:12px;min-height:48px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--violet-d);}
+.stButton>button,.stDownloadButton>button{width:100%;border-radius:14px;min-height:48px;font-weight:500;border:1px solid var(--line);background:#fff;color:var(--violet-d);transition:all .2s ease;}
 .stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--violet);background:var(--lav);color:var(--violet-d);}
-.stButton>button[kind="primary"],.stButton>button[data-testid="stBaseButton-primary"]{background:var(--violet);color:#fff;border-color:var(--violet);}
+.stButton>button[kind="primary"],.stButton>button[data-testid="stBaseButton-primary"]{background:var(--violet);color:#fff;border-color:var(--violet);box-shadow:0 6px 16px rgba(123,104,181,.28);}
 .stButton>button[kind="primary"]:hover,.stButton>button[data-testid="stBaseButton-primary"]:hover{background:var(--violet-d);border-color:var(--violet-d);color:#fff;}
+.stButton>button:focus-visible,.stDownloadButton>button:focus-visible{outline:3px solid #CFC6EC;outline-offset:2px;}
 
 .step{display:flex;gap:14px;align-items:flex-start;margin:30px 0 12px;}
-.step-n{flex:0 0 34px;height:34px;border-radius:50%;background:var(--violet);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-family:'Sora',sans-serif;}
-.step-n.end{background:var(--ink);}
-.step-t{font-family:'Sora',sans-serif;font-weight:700;font-size:1.15rem;color:var(--ink);line-height:1.25;}
-.step-d{color:var(--soft);font-size:.93rem;margin-top:3px;line-height:1.5;}
-.sec{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;color:var(--ink);margin:26px 0 8px;}
-.note{font-size:.86rem;color:var(--soft);margin:8px 2px 0;line-height:1.5;}
+.step-n{flex:0 0 30px;height:30px;border-radius:50%;background:var(--lav);color:var(--violet-d);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:.9rem;}
+.step-n.end{background:var(--violet);color:#fff;}
+.step-t{font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:1.2rem;color:var(--ink);line-height:1.25;}
+.step-d{color:var(--soft);font-size:.92rem;margin-top:3px;line-height:1.5;}
+.sec{font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:1.1rem;color:var(--ink);margin:28px 0 8px;}
+.note{font-size:.85rem;color:var(--soft);margin:8px 2px 0;line-height:1.5;}
 
-.tbl-wrap{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:14px;}
+.tbl-wrap{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);}
 .tbl-wrap.scroll{max-height:420px;}
-table.tbl{width:100%;border-collapse:collapse;font-size:.92rem;white-space:nowrap;}
-table.tbl th{position:sticky;top:0;text-align:left;background:var(--lav);color:var(--ink2);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);}
-table.tbl td{padding:10px 14px;border-bottom:1px solid #EFEDF9;color:var(--ink);}
+table.tbl{width:100%;border-collapse:collapse;font-size:.91rem;white-space:nowrap;}
+table.tbl th{position:sticky;top:0;text-align:left;background:var(--lav);color:var(--violet-d);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);}
+table.tbl td{padding:10px 14px;border-bottom:1px solid #F5F1F9;color:var(--ink);}
 table.tbl tr:last-child td{border-bottom:none;}
-table.tbl tr.pick td{background:#F1EFFE;}
-table.tbl tr.pick td:first-child{box-shadow:inset 4px 0 0 var(--violet);}
-.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.82rem;font-weight:600;}
+table.tbl tr.pick td{background:#F7F3FC;}
+table.tbl tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--violet);}
+.pill{display:inline-block;padding:2px 11px;border-radius:999px;font-size:.8rem;font-weight:600;}
 .pill.low{background:var(--low-bg);color:var(--low-d);}
 .pill.high{background:var(--high-bg);color:var(--high-d);}
 
-.strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 10px;}
+.strip{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 10px;}
 .nb{flex:0 0 auto;text-align:center;min-width:64px;}
-.nb .dot{width:52px;height:52px;border-radius:50%;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-family:'Sora',sans-serif;font-size:1.05rem;}
-.nb .dot.low{background:var(--low);}
-.nb .dot.high{background:var(--high);}
+.nb .dot{width:50px;height:50px;border-radius:50%;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:1.05rem;border:2px solid;}
+.nb .dot.low{background:var(--low-bg);color:var(--low-d);border-color:var(--low);}
+.nb .dot.high{background:var(--high-bg);color:var(--high-d);border-color:var(--high);}
 .nb .id{font-weight:600;font-size:.9rem;color:var(--ink);}
 .nb .jr{font-size:.78rem;color:var(--soft);}
 
-.votebar{display:flex;height:16px;border-radius:999px;overflow:hidden;background:var(--line);margin:8px 0;}
+.votebar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--line);margin:8px 0;}
 .votebar .low{background:var(--low);}
 .votebar .high{background:var(--high);}
-.votelabel{display:flex;justify-content:space-between;gap:10px;font-size:.92rem;font-weight:600;}
+.votelabel{display:flex;justify-content:space-between;gap:10px;font-size:.9rem;font-weight:600;}
 .votelabel .l{color:var(--low-d);}
 .votelabel .h{color:var(--high-d);}
 
-.chartbox{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 10px 6px;margin-top:10px;}
+.chartbox{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px 10px 6px;box-shadow:var(--shadow);}
 .chartbox svg{width:100%;max-width:560px;height:auto;display:block;margin:0 auto;}
-.ct{font-size:13px;fill:#5E5B82;font-family:'Albert Sans',sans-serif;}
-.ctb{font-size:13px;font-weight:600;fill:#1D1B4C;font-family:'Albert Sans',sans-serif;}
+.ct{font-size:13px;fill:#716A8A;font-family:'Albert Sans',sans-serif;}
+.ctb{font-size:13px;font-weight:600;fill:#3B3556;font-family:'Albert Sans',sans-serif;}
 .pulse{transform-box:fill-box;transform-origin:center;animation:pulse 2.6s ease-in-out infinite;}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.30;}50%{transform:scale(1.3);opacity:.12;}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none;}}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 4px 4px;font-size:.84rem;color:var(--soft);}
 .legend span{display:inline-flex;align-items:center;gap:6px;}
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;}
@@ -222,33 +308,56 @@ table.tbl tr.pick td:first-child{box-shadow:inset 4px 0 0 var(--violet);}
 .sw.high{background:var(--high);}
 .sw.ring{background:#fff;border:2px solid var(--ink);}
 .sw.pat{background:var(--ink);border-radius:2px;width:10px;height:10px;transform:rotate(45deg);}
+.sw.me{background:var(--violet);border-radius:3px;width:14px;height:8px;}
 
-.verdict{border-radius:18px;padding:24px 24px 22px;border-left:8px solid;}
-.verdict.low{background:var(--low-bg);border-color:var(--low);}
-.verdict.high{background:var(--high-bg);border-color:var(--high);}
-.v-who{font-size:.95rem;color:var(--soft);}
-.v-title{font-family:'Sora',sans-serif;font-size:2.1rem;font-weight:700;line-height:1.1;margin:4px 0 8px;}
+.verdict{border-radius:24px;padding:26px 26px 24px;border:1px solid;box-shadow:var(--shadow);}
+.verdict.low{background:linear-gradient(135deg,#EEF7F3,#E3F1EB);border-color:#D2E8DE;}
+.verdict.high{background:linear-gradient(135deg,#FDF0F3,#F9E4EA);border-color:#F2D3DB;}
+.v-who{font-size:.92rem;color:var(--soft);}
+.v-title{font-family:'Playfair Display',Georgia,serif;font-size:2.2rem;font-weight:600;line-height:1.1;margin:4px 0 8px;}
 .verdict.low .v-title{color:var(--low-d);}
 .verdict.high .v-title{color:var(--high-d);}
-.v-sub{color:var(--ink);font-size:1rem;line-height:1.5;}
-.meter{margin-top:18px;}
-.meter-track{position:relative;height:12px;border-radius:999px;background:linear-gradient(90deg,#BFE6D8 0%,#BFE6D8 50%,#F6C3CA 50%,#F6C3CA 100%);}
-.meter-pin{position:absolute;top:50%;width:22px;height:22px;border-radius:50%;background:var(--ink);border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 1px 4px rgba(29,27,76,.35);}
-.meter-scale{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:.84rem;color:var(--soft);}
+.v-sub{color:var(--ink);font-size:1rem;line-height:1.55;}
+.meter{margin-top:20px;}
+.meter-track{position:relative;height:10px;border-radius:999px;background:linear-gradient(90deg,#CFE5DB 0%,#CFE5DB 50%,#F4CCD5 50%,#F4CCD5 100%);}
+.meter-pin{position:absolute;top:50%;width:22px;height:22px;border-radius:50%;background:var(--violet);border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(59,53,86,.3);}
+.meter-scale{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:.84rem;color:var(--soft);}
 .meter-scale b{color:var(--ink);}
-.disclaimer{font-size:.84rem;color:var(--soft);margin:10px 2px 0;}
+.disclaimer{font-size:.83rem;color:var(--soft);margin:10px 2px 0;}
 
-.guide{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px;line-height:1.6;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:999px;font-size:.88rem;font-weight:500;}
+.chip b{font-weight:600;}
+.chip.ok,.chip.low{background:var(--low-bg);color:var(--low-d);}
+.chip.warn{background:var(--warn-bg);color:var(--warn-d);}
+.chip.bad,.chip.high{background:var(--high-bg);color:var(--high-d);}
+.chip.info{background:var(--info-bg);color:var(--info-d);}
+.chip.cur{outline:2px solid var(--violet);outline-offset:1px;}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 16px 14px;box-shadow:var(--shadow);}
+.kpi b{display:block;font-family:'Playfair Display',Georgia,serif;font-size:1.7rem;font-weight:600;color:var(--violet-d);line-height:1.15;}
+.kpi span{display:block;font-size:.83rem;color:var(--soft);margin-top:4px;line-height:1.4;}
+
+.guide{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin-bottom:12px;line-height:1.65;box-shadow:var(--shadow);}
 .guide b{color:var(--ink);}
 .guide ol,.guide ul{margin:8px 0 0 1.1rem;padding:0;}
 .guide li{margin:4px 0;}
 
-.analisis-box{background:var(--lav);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:16px;line-height:1.6;}
-.analisis-box b{color:var(--ink);}
+@media (max-width:640px){
+ .hero{padding:24px 20px;}
+ .hero-title{font-size:1.7rem;}
+ .hero-art{flex-basis:150px;width:150px;margin:0 auto;}
+ .v-title{font-size:1.8rem;}
+ .kpi b{font-size:1.4rem;}
+}
 </style>
 """
 
 
+# ============================================================
+# PEMBANGUN HTML (semua satu baris agar aman di st.markdown)
+# ============================================================
 def e(x):
     import html
     return html.escape(str(x))
@@ -261,17 +370,49 @@ def fmt(v):
         return str(v)
 
 
+def pill(kelas):
+    return f'<span class="pill {"high" if int(kelas) == 1 else "low"}">{LABEL[int(kelas)]}</span>'
+
+
+def tabel_html(headers, rows, pilih=None, scroll=False):
+    pilih = pilih or [False] * len(rows)
+    th = "".join(f"<th>{e(h)}</th>" for h in headers)
+    trs = "".join(
+        f'<tr class="{"pick" if p else ""}">' + "".join(f"<td>{c}</td>" for c in row) + "</tr>"
+        for row, p in zip(rows, pilih))
+    return (f'<div class="tbl-wrap{" scroll" if scroll else ""}"><table class="tbl">'
+            f'<thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table></div>')
+
+
+def langkah(n, judul, deskripsi, akhir=False):
+    st.markdown(
+        f'<div class="step"><div class="step-n{" end" if akhir else ""}">{n}</div><div>'
+        f'<div class="step-t">{e(judul)}</div><div class="step-d">{e(deskripsi)}</div></div></div>',
+        unsafe_allow_html=True)
+
+
+def bagian(judul):
+    st.markdown(f'<div class="sec">{e(judul)}</div>', unsafe_allow_html=True)
+
+
+def catatan(teks):
+    st.markdown(f'<div class="note">{e(teks)}</div>', unsafe_allow_html=True)
+
+
 def svg_hero():
     rendah = [(34, 112), (62, 92), (44, 66), (80, 120), (96, 84)]
     tinggi = [(150, 48), (178, 30), (170, 76), (196, 56), (136, 26)]
     px, py = 120, 64
-    o = ['<svg viewBox="0 0 220 150" role="img" aria-label="Ilustrasi">']
+    dekat = [(150, 48), (136, 26), (170, 76)]
+    o = ['<svg viewBox="0 0 220 150" role="img" aria-label="Ilustrasi: pasien baru dibandingkan dengan pasien terdekat">']
+    for x, y in dekat:
+        o.append(f'<line x1="{px}" y1="{py}" x2="{x}" y2="{y}" stroke="#3B3556" stroke-opacity=".30" stroke-width="1.5" stroke-dasharray="4 4"/>')
     for x, y in rendah:
-        o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#3FC99B"/>')
+        o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#8CC5B1"/>')
     for x, y in tinggi:
-        o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#FF7A8B"/>')
-    o.append(f'<circle cx="{px}" cy="{py}" r="17" fill="#FFC857" opacity=".3"/>')
-    o.append(f'<polygon points="{px},{py-10} {px+10},{py} {px},{py+10} {px-10},{py}" fill="#FFC857" stroke="#1D1B4C" stroke-width="2"/>')
+        o.append(f'<circle cx="{x}" cy="{y}" r="7" fill="#EE9AAA"/>')
+    o.append(f'<circle class="pulse" cx="{px}" cy="{py}" r="17" fill="#E8C07D"/>')
+    o.append(f'<polygon points="{px},{py-10} {px+10},{py} {px},{py+10} {px-10},{py}" fill="#E8C07D" stroke="#3B3556" stroke-width="2"/>')
     o.append("</svg>")
     return "".join(o)
 
@@ -280,8 +421,8 @@ def html_hero(n, n_tinggi):
     return (
         '<div class="hero"><div class="hero-text">'
         '<div class="hero-title" role="heading" aria-level="1">Cek Risiko Diabetes</div>'
-        '<div class="hero-sub">Sistem Pendukung Keputusan medis berbasis algoritma K-Nearest Neighbors (KNN) '
-        'untuk mengestimasi risiko diabetes secara cepat dan transparan.</div>'
+        '<div class="hero-sub">Masukkan data pasien. Sistem mencari pasien yang paling mirip di dataset, '
+        'lalu menentukan risikonya dengan algoritma K-Nearest Neighbors.</div>'
         f'<div class="hero-pills"><span class="hero-pill">{n} pasien di dataset</span>'
         f'<span class="hero-pill">{n_tinggi} berisiko tinggi</span></div></div>'
         f'<div class="hero-art">{svg_hero()}</div></div>')
@@ -289,7 +430,7 @@ def html_hero(n, n_tinggi):
 
 def tick_bagus(lo, hi, n=5):
     raw = (hi - lo) / n
-    mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+    mag = 10 ** math.floor(math.log10(raw))
     step = mag * 10
     for m in (1, 2, 2.5, 5, 10):
         if raw <= m * mag:
@@ -322,7 +463,7 @@ def svg_peta(h):
     def sy(v):
         return T + ph - (v - y0) / (y1 - y0) * ph
 
-    o = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Peta posisi pasien">']
+    o = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Peta posisi pasien baru terhadap pasien lain menurut glukosa dan BMI">']
     for v in tick_bagus(x0, x1):
         x = sx(v)
         o.append(f'<line x1="{x:.1f}" y1="{T}" x2="{x:.1f}" y2="{T+ph}" stroke="{C["grid"]}"/>')
@@ -353,6 +494,9 @@ def svg_peta(h):
     o.append(f'<circle class="pulse" cx="{px:.1f}" cy="{py:.1f}" r="19" fill="{C["violet"]}"/>')
     o.append(f'<polygon points="{px:.1f},{py-11:.1f} {px+11:.1f},{py:.1f} {px:.1f},{py+11:.1f} {px-11:.1f},{py:.1f}" '
              f'fill="{C["ink"]}" stroke="#fff" stroke-width="2"/>')
+    lx = min(max(px, L + 34), W - R - 34)
+    ly = max(py - 22, T + 12)
+    o.append(f'<text class="ctb" x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle">Pasien baru</text>')
     o.append("</svg>")
     leg = ('<div class="legend"><span><i class="sw low"></i>Risiko rendah</span>'
            '<span><i class="sw high"></i>Risiko tinggi</span>'
@@ -361,15 +505,61 @@ def svg_peta(h):
     return f'<div class="chartbox">{"".join(o)}</div>{leg}'
 
 
-def langkah(n, judul, deskripsi, akhir=False):
-    st.markdown(
-        f'<div class="step"><div class="step-n{" end" if akhir else ""}">{n}</div><div>'
-        f'<div class="step-t">{e(judul)}</div><div class="step-d">{e(deskripsi)}</div></div></div>',
-        unsafe_allow_html=True)
+def svg_profil(h):
+    nb, p0, p1, b = h["norm_baru"], h["prof0"], h["prof1"], h["baru"]
+    W, X0, LEBAR = 480, 8, 380
+    H = 34 + len(FITUR) * 70 + 4
+    o = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Perbandingan nilai pasien baru dengan rata-rata tiap kelas">']
+    legenda = [(8, C["violet"], "Pasien"), (96, C["low"], "Rata-rata rendah"), (256, C["high"], "Rata-rata tinggi")]
+    for x, warna, teks in legenda:
+        o.append(f'<rect x="{x}" y="2" width="12" height="9" rx="2" fill="{warna}"/>')
+        o.append(f'<text class="ct" x="{x+18}" y="11">{teks}</text>')
+    for i, f in enumerate(FITUR):
+        y0 = 34 + i * 70
+        o.append(f'<text class="ctb" x="{X0}" y="{y0+12}">{e(f)} ({e(fmt(b[f]))})</text>')
+        for j, (nilai, warna) in enumerate([(nb[f], C["violet"]), (p0[f], C["low"]), (p1[f], C["high"])]):
+            y = y0 + 20 + j * 14
+            w = max(0.0, min(1.0, nilai)) * LEBAR
+            o.append(f'<rect x="{X0}" y="{y}" width="{LEBAR}" height="10" rx="3" fill="#F1ECF6"/>')
+            if w > 0:
+                o.append(f'<rect x="{X0}" y="{y}" width="{w:.1f}" height="10" rx="3" fill="{warna}"/>')
+            o.append(f'<text class="ct" x="{X0+max(w,0)+6:.1f}" y="{y+9}">{nilai:.2f}</text>')
+    o.append("</svg>")
+    leg = ('<div class="legend"><span><i class="sw me"></i>Pasien baru</span>'
+           '<span><i class="sw low"></i>Rata-rata kelas rendah</span>'
+           '<span><i class="sw high"></i>Rata-rata kelas tinggi</span></div>')
+    return f'<div class="chartbox">{"".join(o)}</div>{leg}'
 
 
-def bagian(judul):
-    st.markdown(f'<div class="sec">{e(judul)}</div>', unsafe_allow_html=True)
+def svg_kurva(ks, akurasi, kcur):
+    W, H, L, R, T, B = 480, 240, 46, 16, 22, 40
+    pw, ph = W - L - R, H - T - B
+    n = len(ks)
+
+    def xs(i):
+        return L + (pw / 2 if n == 1 else i * pw / (n - 1))
+
+    def ys(a):
+        return T + ph - a * ph
+
+    o = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Akurasi uji silang untuk setiap nilai K">']
+    for a in (0, 0.25, 0.5, 0.75, 1):
+        y = ys(a)
+        o.append(f'<line x1="{L}" y1="{y:.1f}" x2="{L+pw}" y2="{y:.1f}" stroke="{C["grid"]}"/>')
+        o.append(f'<text class="ct" x="{L-8}" y="{y+4:.1f}" text-anchor="end">{int(a*100)}%</text>')
+    pts = " ".join(f"{xs(i):.1f},{ys(a):.1f}" for i, a in enumerate(akurasi))
+    o.append(f'<polyline points="{pts}" fill="none" stroke="{C["violet"]}" stroke-width="2.5" stroke-linejoin="round"/>')
+    for i, (k, a) in enumerate(zip(ks, akurasi)):
+        x, y = xs(i), ys(a)
+        o.append(f'<text class="ct" x="{x:.1f}" y="{T+ph+18}" text-anchor="middle">{k}</text>')
+        if k == kcur:
+            o.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{C["violet"]}" stroke="#fff" stroke-width="2"/>')
+            o.append(f'<text class="ctb" x="{min(max(x, L+30), W-R-30):.1f}" y="{max(y-12, 14):.1f}" text-anchor="middle">K={k}: {a*100:.0f}%</text>')
+        else:
+            o.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="#fff" stroke="{C["violet"]}" stroke-width="2"/>')
+    o.append(f'<text class="ct" x="{L+pw/2:.0f}" y="{H-6}" text-anchor="middle">Nilai K</text>')
+    o.append("</svg>")
+    return f'<div class="chartbox">{"".join(o)}</div>'
 
 
 def html_tetangga(h):
@@ -396,42 +586,47 @@ def html_kesimpulan(h):
     suara = h["n1"] if pred == 1 else h["n0"]
     skor = h["skor"] * 100
     ekstra = " Suara diberi bobot sesuai kedekatan." if h["berbobot"] else ""
+    margin = abs(h["skor"] - 0.5) * 2
+    keyakinan = "Kuat" if margin >= 0.6 else ("Sedang" if margin >= 0.3 else "Tipis")
     return (f'<div class="verdict {c}"><div class="v-who">Hasil untuk {e(h["nama"])}</div>'
             f'<div class="v-title">Risiko {LABEL[pred]}</div>'
             f'<div class="v-sub">{suara} dari {h["k"]} pasien terdekat termasuk kelas Risiko {LABEL[pred]}.{ekstra}</div>'
             f'<div class="meter"><div class="meter-track"><span class="meter-pin" style="left:{skor:.1f}%"></span></div>'
-            f'<div class="meter-scale"><span>Rendah</span><span>Skor risiko tinggi: <b>{skor:.0f}%</b></span><span>Tinggi</span></div></div></div>'
+            f'<div class="meter-scale"><span>Rendah</span><span>Skor risiko tinggi: <b>{skor:.0f}%</b></span><span>Tinggi</span></div></div>'
+            f'<div class="chips" style="margin-top:16px"><span class="chip info"><b>Keyakinan</b>{keyakinan}</span>'
+            f'<span class="chip info"><b>Jarak</b>{e(h["metrik"])}</span></div></div>'
             '<div class="disclaimer">Hasil ini alat bantu keputusan, bukan diagnosis medis.</div>')
 
 
-def html_analisis(h):
-    b = h["baru"]
-    pred = h["pred"]
-    skor = h["skor"] * 100
-    
-    faktor = []
-    if b["Glukosa"] >= 140:
-        faktor.append("kadar glukosa darah yang cukup tinggi (≥ 140 mg/dL)")
-    elif b["Glukosa"] >= 120:
-        faktor.append("kadar glukosa darah di atas batas rata-rata")
-    
-    if b["BMI"] >= 27:
-        faktor.append("indeks massa tubuh (BMI) yang termasuk kategori berlebih")
-    
-    if b["Riwayat Keluarga"] == 1:
-        faktor.append("memiliki riwayat keluarga dengan diabetes")
+def html_catatan(b):
+    ada = int(b["Riwayat Keluarga"]) == 1
+    items = []
+    for nama, nilai, (teks, nada) in [
+        ("BMI", fmt(b["BMI"]), kategori_bmi(b["BMI"])),
+        ("Glukosa", fmt(b["Glukosa"]), kategori_glukosa(b["Glukosa"])),
+        ("Tekanan darah", fmt(b["Tekanan Darah"]), kategori_tensi(b["Tekanan Darah"])),
+        ("Riwayat keluarga", "", ("Faktor risiko", "warn") if ada else ("Tidak ada", "ok")),
+    ]:
+        judul = f"{nama} {nilai}".strip()
+        items.append(f'<span class="chip {nada}"><b>{e(judul)}</b>{e(teks)}</span>')
+    return f'<div class="chips">{"".join(items)}</div>'
 
-    penjelasan_faktor = ", ".join(faktor) if faktor else "kombinasi parameter klinis secara keseluruhan"
-    
-    narasi = (
-        f"Berdasarkan penelusuran <b>{h['k']} tetangga terdekat</b> menggunakan algoritma KNN, "
-        f"pasien <b>{e(h['nama'])}</b> dikategorikan ke dalam tingkat <b>Risiko {LABEL[pred]}</b> "
-        f"dengan tingkat keyakinan skor sebesar <b>{skor:.0f}%</b>.<br><br>"
-        f"Hal ini dipengaruhi oleh kemiripan karakteristik klinis dengan pasien lain di dataset, "
-        f"terutama dari segi {penjelasan_faktor}. "
-        f"{'Disarankan untuk melakukan pemeriksaan lanjutan berkala ke fasilitas kesehatan.' if pred == 1 else 'Pertahankan pola hidup sehat dan jaga kestabilan gula darah.'}"
-    )
-    return f'<div class="analisis-box"><b>Analisis & Interpretasi Hasil:</b><br>{narasi}</div>'
+
+def html_k_alternatif(h):
+    t = h["tabel"]
+    chips, hasil_set = "", set()
+    for kk in (1, 3, 5, 7, 9):
+        if kk > len(t):
+            continue
+        pred, _, _, _ = voting(t["Kelas"].to_numpy(), t["Jarak"].to_numpy(), kk, h["berbobot"])
+        hasil_set.add(pred)
+        cur = " cur" if kk == h["k"] else ""
+        chips += f'<span class="chip {"high" if pred == 1 else "low"}{cur}"><b>K={kk}</b>{LABEL[pred]}</span>'
+    if len(hasil_set) == 1:
+        ket = "Hasil sama untuk semua nilai K yang dicoba, jadi hasil ini stabil."
+    else:
+        ket = "Hasil berubah pada beberapa nilai K. Anggap hasil ini kurang pasti dan konfirmasikan dengan pemeriksaan lain."
+    return f'<div class="chips">{chips}</div><div class="note">{e(ket)}</div>'
 
 
 def laporan_teks(h):
@@ -448,38 +643,34 @@ def laporan_teks(h):
         f"- Tekanan darah   : {fmt(b['Tekanan Darah'])} mmHg",
         f"- Riwayat keluarga: {'Ada' if int(b['Riwayat Keluarga']) == 1 else 'Tidak ada'}",
         "",
-        f"Parameter: K = {h['k']}, voting {'berbobot jarak' if h['berbobot'] else 'biasa'}",
+        f"Parameter: K = {h['k']}, voting {'berbobot jarak' if h['berbobot'] else 'biasa'}, jarak {h['metrik']}",
         "Tetangga terdekat:",
     ]
     for _, r in h["tabel"][h["tabel"]["Terpilih"]].iterrows():
         baris.append(f"{int(r['Peringkat'])}. {r['Pasien']} (Risiko {LABEL[int(r['Kelas'])]}), jarak {r['Jarak']:.4f}")
-    baris.extend([
+    baris += [
         "",
         f"Voting: Rendah {h['n0']} suara, Tinggi {h['n1']} suara",
         f"Skor risiko tinggi: {h['skor'] * 100:.0f}%",
         f"KESIMPULAN: Risiko {LABEL[h['pred']]}",
         "",
         "Catatan: hasil ini alat bantu keputusan, bukan diagnosis medis.",
-    ])
+    ]
     return "\n".join(baris)
-
-
-# ============================================================
-# INISIALISASI SESSION STATE
-# ============================================================
-if "data" not in st.session_state:
-    st.session_state.data = DATA_AWAL.copy()
-if "hasil" not in st.session_state:
-    st.session_state.hasil = None
-if "flash_data" not in st.session_state:
-    st.session_state.flash_data = None
-if "flash_error" not in st.session_state:
-    st.session_state.flash_error = None
 
 
 # ============================================================
 # CALLBACK
 # ============================================================
+def cb_contoh(jenis):
+    for kunci, nilai in CONTOH[jenis].items():
+        st.session_state[kunci] = nilai
+
+
+def cb_pakai_k(k):
+    st.session_state.in_k = int(k)
+
+
 def cb_simpan():
     s = st.session_state
     h = s.hasil
@@ -495,26 +686,11 @@ def cb_tambah():
     s.flash_data = f"Pasien {pid} ditambahkan. Dataset sekarang berisi {len(s.data)} pasien."
 
 
-def cb_hapus_terakhir():
+def cb_hapus():
     s = st.session_state
     if len(s.data) > 3:
         s.data = s.data.iloc[:-1].reset_index(drop=True)
         s.flash_data = "Pasien terakhir dihapus."
-
-
-def cb_hapus_pilih():
-    s = st.session_state
-    target_id = s.get("pilih_hapus_pasien")
-    if len(s.data) <= 3:
-        s.flash_error = "Dataset minimal harus memiliki 3 pasien."
-        return
-    if target_id:
-        awal_len = len(s.data)
-        s.data = s.data[s.data["Pasien"] != target_id].reset_index(drop=True)
-        if len(s.data) < awal_len:
-            s.flash_data = f"Pasien {target_id} berhasil dihapus dari dataset."
-        else:
-            s.flash_error = f"Pasien {target_id} tidak ditemukan."
 
 
 def cb_reset():
@@ -539,190 +715,311 @@ def cb_muat():
         s.flash_data = f"CSV dimuat. Dataset berisi {len(df)} pasien."
 
 
+def cb_hapus_riwayat():
+    st.session_state.riwayat = []
+
+
 # ============================================================
-# TAMPILAN UTAMA
+# TAB: PREDIKSI
 # ============================================================
-st.set_page_config(page_title="Cek Risiko Diabetes (KNN)", page_icon="🩺", layout="centered")
-st.markdown(CSS, unsafe_allow_html=True)
+def tampilkan_hasil(h):
+    k = h["k"]
+    t = h["tabel"]
+    b = h["baru"]
+    euk = h["metrik"] == "Euclidean"
 
-data_kini = st.session_state.data
-n_tinggi = int((data_kini["Kelas"] == 1).sum())
-st.markdown(html_hero(len(data_kini), n_tinggi), unsafe_allow_html=True)
+    langkah("✓", "Hasil prediksi", "Ringkasan dari perhitungan K-Nearest Neighbors.", akhir=True)
+    st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
 
-if st.session_state.flash_data:
-    st.success(st.session_state.flash_data)
-    st.session_state.flash_data = None
-if st.session_state.flash_error:
-    st.error(st.session_state.flash_error)
-    st.session_state.flash_error = None
+    bagian("Catatan dari nilai yang dimasukkan")
+    st.markdown(html_catatan(b), unsafe_allow_html=True)
+    catatan("Kategori memakai acuan umum: BMI menurut WHO, glukosa puasa, dan tekanan sistolik. Ini informasi tambahan dan tidak memengaruhi hitungan KNN.")
 
-tab_pred, tab_data = st.tabs(["🔮 Prediksi Pasien", "📊 Kelola Dataset"])
+    bagian("Bagaimana jika nilai K diganti?")
+    st.markdown(html_k_alternatif(h), unsafe_allow_html=True)
 
-with tab_pred:
-    st.markdown(
-        '<div class="guide"><b>Panduan Penggunaan Sistem:</b><ol>'
-        '<li>Masukkan parameter klinis pasien baru (Usia, BMI, Glukosa, Tekanan Darah, Riwayat Keluarga) pada formulir.</li>'
-        '<li>Atur nilai <b>K</b> untuk menentukan berapa banyak tetangga terdekat yang dianalisis.</li>'
-        '<li>Klik tombol <b>Hitung Prediksi Risiko</b> untuk melihat proses normalisasi, perhitungan jarak, grafik peta, serta analisis mendalam.</li>'
-        '</ol></div>',
-        unsafe_allow_html=True
-    )
+    bagian("Posisi pasien baru")
+    st.markdown(svg_peta(h), unsafe_allow_html=True)
+    catatan("Peta hanya memakai dua dari lima fitur (glukosa dan BMI), jadi jarak di peta tidak persis sama dengan jarak hitungan.")
 
-    bagian("1. Masukkan Data Pasien Baru")
-    with st.form("form_pred"):
-        nama = st.text_input("Nama atau Kode Pasien", value="Pasien 1")
-        c1, c2 = st.columns(2)
-        usia = c1.number_input("Usia (tahun)", 1, 120, 42, 1)
-        bmi = c2.number_input("BMI", 10.0, 60.0, 28.5, 0.1, format="%.1f")
-        glu = c1.number_input("Glukosa (mg/dL)", 40, 400, 130, 1)
-        tensi = c2.number_input("Tekanan Darah (mmHg)", 60, 250, 128, 1)
-        riw = st.radio("Riwayat Keluarga dengan Diabetes", ["Tidak ada", "Ada"], index=1, horizontal=True)
-        k = st.slider("Nilai K (Jumlah Tetangga Terdekat)", 1, min(15, len(data_kini)), 3, 1)
-        berbobot = st.checkbox("Gunakan pembobotan jarak (Distance Weighting)", value=False)
-        hitung = st.form_submit_button("Hitung Prediksi Risiko", type="primary")
+    st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
+    with st.expander("Lihat proses perhitungan"):
+        langkah("A", "Samakan skala data", "Glukosa berskala ratusan, sedangkan BMI puluhan. Normalisasi Min-Max membuat semua fitur bernilai 0 sampai 1.")
+        st.latex(r"x' = \dfrac{x - x_{min}}{x_{max} - x_{min}}")
+        rows = [[e(f), fmt(h["fmin"][f]), fmt(h["fmax"][f]), fmt(b[f]), f'{h["norm_baru"][f]:.4f}'] for f in FITUR]
+        st.markdown(tabel_html(["Fitur", "Min", "Maks", "Nilai pasien", "Hasil normalisasi"], rows), unsafe_allow_html=True)
+        if any(v < 0 or v > 1 for v in h["norm_baru"].values()):
+            catatan("Ada nilai yang berada di luar rentang data latih, sehingga hasil normalisasinya kurang dari 0 atau lebih dari 1. Perhitungan tetap berjalan.")
 
-    if hitung:
-        pasien = {
-            "Usia": usia, "BMI": bmi, "Glukosa": glu,
-            "Tekanan Darah": tensi, "Riwayat Keluarga": 1 if riw == "Ada" else 0
-        }
-        st.session_state.hasil = hitung_knn(data_kini, pasien, k, berbobot)
-        st.session_state.hasil["nama"] = nama.strip() or "Pasien"
+        langkah("B", f"Hitung jarak {h['metrik']} ke tiap pasien", f"Makin kecil jarak, makin mirip. Baris berpenanda ungu adalah {k} pasien terdekat.")
+        st.latex(r"d = \sqrt{\sum (x_i - y_i)^2}" if euk else r"d = \sum |x_i - y_i|")
+        rows = [[str(int(r["Peringkat"])), e(r["Pasien"]), f'{r["Jarak"]:.4f}', pill(r["Kelas"])] for _, r in t.iterrows()]
+        st.markdown(tabel_html(["Peringkat", "Pasien", "Jarak", "Kelas"], rows, [bool(x) for x in t["Terpilih"]], scroll=len(t) > 12),
+                    unsafe_allow_html=True)
+        if st.toggle("Tampilkan contoh hitung jarak ke tetangga terdekat", key="show_contoh"):
+            r0 = t.iloc[0]
+            nl = h["norm_latih"].iloc[int(r0["Idx"])]
+            selisih = [h["norm_baru"][f] - float(nl[f]) for f in FITUR]
+            sel = [v ** 2 for v in selisih] if euk else [abs(v) for v in selisih]
+            rows = [[e(f), f'{h["norm_baru"][f]:.4f}', f'{float(nl[f]):.4f}', f'{v:.4f}'] for f, v in zip(FITUR, sel)]
+            rows.append(["<b>Jumlah</b>", "", "", f"<b>{sum(sel):.4f}</b>"])
+            st.markdown(tabel_html(["Fitur", "Pasien baru", str(r0["Pasien"]), "Selisih kuadrat" if euk else "Selisih mutlak"], rows),
+                        unsafe_allow_html=True)
+            catatan(f"Jarak = akar dari {sum(sel):.4f} = {math.sqrt(sum(sel)):.4f}" if euk else f"Jarak = jumlah selisih mutlak = {sum(sel):.4f}")
 
-    h = st.session_state.hasil
-    if h is not None:
-        bagian("2. Proses Perhitungan K-Nearest Neighbors")
-        
-        langkah(1, "Normalisasi Fitur (Min-Max)", "Setiap nilai fitur diubah ke rentang [0, 1] agar porsinya setara.")
-        st.markdown("Rumus Normalisasi Min-Max:")
-        st.latex(r"x' = \frac{x - x_{min}}{x_{max} - x_{min}}")
-
-        df_norm = pd.DataFrame({
-            "Fitur": FITUR,
-            "Min": [h["fmin"][f] for f in FITUR],
-            "Max": [h["fmax"][f] for f in FITUR],
-            "Nilai Pasien": [h["baru"][f] for f in FITUR],
-            "Normalisasi": [round(h["norm_baru"][f], 4) for f in FITUR],
-        })
-        st.markdown(
-            f'<div class="tbl-wrap"><table class="tbl"><thead><tr>'
-            f'<th>Fitur</th><th>Min</th><th>Max</th><th>Nilai Pasien</th><th>Normalisasi</th>'
-            f'</thead><tbody>' + "".join(
-                f'<tr><td>{r.Fitur}</td><td>{fmt(r.Min)}</td><td>{fmt(r.Max)}</td><td>{fmt(r["Nilai Pasien"])}</td><td>{r.Normalisasi}</td></tr>'
-                for _, r in df_norm.iterrows()) + '</tbody></table></div>',
-            unsafe_allow_html=True)
-
-        langkah(2, "Hitung Jarak Euclidean", "Menghitung jarak kuadrat antara pasien baru dan seluruh pasien di dataset latih.")
-        st.markdown("Rumus Jarak Euclidean:")
-        st.latex(r"d(p, q) = \sqrt{\sum_{i=1}^{n} (p_i - q_i)^2}")
-
-        t = h["tabel"].copy()
-        t_headers = ["Peringkat", "ID", "Kelas Asli", "Jarak Euclidean", "Terpilih"]
-        t_rows = []
-        for _, r in t.iterrows():
-            kls_str = f'<span class="pill {"high" if int(r["Kelas"])==1 else "low"}">{LABEL[int(r["Kelas"])]}</span>'
-            pilih_str = "✔" if r["Terpilih"] else ""
-            t_rows.append([int(r["Peringkat"]), e(r["Pasien"]), kls_str, f'{r["Jarak"]:.4f}', pilih_str])
-        st.markdown(
-            f'<div class="tbl-wrap scroll">'
-            f'<table class="tbl"><thead><tr>' + "".join(f"<th>{th}</th>" for th in t_headers) + '</tr></thead><tbody>' +
-            "".join(f'<tr class="{"pick" if r[4] else ""}">' + "".join(f"<td>{cell}</td>" for cell in r) + '</tr>' for r in t_rows) +
-            '</tbody></table></div>',
-            unsafe_allow_html=True)
+        langkah("C", f"Suara dari {k} tetangga terdekat", "Kelas yang paling banyak muncul menjadi hasil prediksi.")
         st.markdown(html_tetangga(h), unsafe_allow_html=True)
-
-        # Grafik Peta Sebaran Spasial (Scatter Plot)
-        st.markdown(
-            '<div class="sec" style="margin-top:24px">Peta Sebaran Pasien (Glukosa vs BMI)</div>',
-            unsafe_allow_html=True
-        )
-        st.markdown(svg_peta(h), unsafe_allow_html=True)
-
-        langkah(3, f"Voting dari {h['k']} Tetangga Terdekat", "Menentukan mayoritas kelas dari tetangga terdekat yang terpilih.")
+        catatan("Angka di lingkaran adalah peringkat kedekatan, angka di bawahnya jarak. Merah muda berarti risiko tinggi, hijau berarti risiko rendah.")
         st.markdown(html_voting(h), unsafe_allow_html=True)
+        if h["berbobot"]:
+            catatan("Suara diberi bobot 1 dibagi jarak, jadi tetangga yang lebih dekat berpengaruh lebih besar. Panjang batang mengikuti bobot tersebut.")
+        elif h["n0"] == h["n1"]:
+            catatan("Suara seri, sehingga kelas diambil dari pasien yang paling dekat.")
 
-        langkah(4, "Kesimpulan & Analisis Hasil", "Hasil akhir estimasi risiko beserta penjelasan naratif.", akhir=True)
-        st.markdown(html_kesimpulan(h), unsafe_allow_html=True)
-        st.markdown(html_analisis(h), unsafe_allow_html=True)
+        langkah("D", "Bandingkan profil nilai", "Nilai dibandingkan pada skala 0 sampai 1 agar adil untuk semua fitur.")
+        st.markdown(svg_profil(h), unsafe_allow_html=True)
+        catatan("Jika batang pasien lebih dekat ke rata-rata satu kelas, pasien lebih mirip dengan kelas itu pada fitur tersebut.")
 
-        bagian("Simpan Hasil ke Dataset")
-        st.radio("Pilih kelas untuk disimpan ke dataset:", [0, 1], index=h["pred"], horizontal=True,
-                 format_func=lambda x: f"Risiko {LABEL[x]}", key="simpan_kelas")
-        st.button("Simpan Pasien Ini ke Dataset Latih", on_click=cb_simpan)
+    bagian("Simpan atau unduh")
+    with st.container(border=True):
         if h["tersimpan"]:
-            st.success(f"Berhasil disimpan sebagai {h['tersimpan']}.")
+            st.success(f"Pasien ini sudah disimpan ke dataset sebagai {h['tersimpan']}.")
+        else:
+            st.caption("Simpan pasien ini ke dataset latih agar ikut dihitung pada prediksi berikutnya. Ubah kelasnya jika kelas sebenarnya sudah diketahui.")
+            st.radio("Kelas yang disimpan", [0, 1], index=int(h["pred"]), horizontal=True, key="simpan_kelas",
+                     format_func=lambda x: f"Risiko {LABEL[x]}")
+            st.button("Simpan ke dataset", key="btn_simpan", on_click=cb_simpan)
+        st.download_button("Unduh laporan (TXT)", laporan_teks(h).encode("utf-8"),
+                           file_name="laporan_risiko_diabetes.txt", mime="text/plain", key="dl_laporan")
 
-        bagian("Unduh Laporan")
-        st.download_button("Unduh Laporan Teks (.txt)", data=laporan_teks(h),
-                           file_name=f"laporan_knn_{h['nama'].replace(' ', '_')}.txt", mime="text/plain")
 
-with tab_data:
-    bagian("Manajemen Dataset Latih")
-    st.write(f"Total pasien aktif di dataset: **{len(data_kini)}**")
-    
-    # Keterangan Informasi Kode Kolom
-    st.markdown(
-        '<div class="guide" style="font-size:0.9rem; padding: 12px 16px; margin-bottom: 12px;">'
-        '<b>Keterangan Kolom Dataset:</b><br>'
-        '• <b>Riwayat Keluarga:</b> <code>0</code> = Tidak Ada Risiko, <code>1</code> = Ada Risiko.<br>'
-        '• <b>Kelas Risiko:</b> Rendah (0) atau Tinggi (1).'
-        '</div>',
-        unsafe_allow_html=True
-    )
+def render_prediksi():
+    s = st.session_state
+    data = s.data
 
-    # Render Tabel Dataset dengan HTML agar rapi dan sejajar
-    t_tampil = data_kini.copy()
-    t_tampil["Riwayat Keluarga"] = t_tampil["Riwayat Keluarga"].map(lambda x: f"{x} ({'Ada' if int(x)==1 else 'Tidak Ada'})")
-    t_tampil["Kelas"] = t_tampil["Kelas"].map(lambda x: f'<span class="pill {"high" if int(x)==1 else "low"}">Risiko {LABEL[int(x)]}</span>')
-    
-    html_rows = []
-    for _, row in t_tampil.iterrows():
-        html_rows.append(
-            f"<tr><td><b>{e(row['Pasien'])}</b></td>"
-            f"<td>{fmt(row['Usia'])}</td>"
-            f"<td>{fmt(row['BMI'])}</td>"
-            f"<td>{fmt(row['Glukosa'])}</td>"
-            f"<td>{fmt(row['Tekanan Darah'])}</td>"
-            f"<td>{row['Riwayat Keluarga']}</td>"
-            f"<td>{row['Kelas']}</td></tr>"
-        )
-    
-    st.markdown(
-        f'<div class="tbl-wrap scroll"><table class="tbl"><thead><tr>'
-        f'<th>Pasien</th><th>Usia</th><th>BMI</th><th>Glukosa</th><th>Tekanan Darah</th><th>Riwayat Keluarga</th><th>Kelas Risiko</th>'
-        f'</tr></thead><tbody>' + "".join(html_rows) + '</tbody></table></div>',
-        unsafe_allow_html=True
-    )
-
-    bagian("Tambah Pasien Baru")
-    with st.form("f_tambah"):
+    langkah(1, "Isi data pasien", "Semua isian dipakai dalam perhitungan.")
+    with st.container(border=True):
+        st.caption("Isi cepat dengan contoh")
+        b1, b2 = st.columns(2)
+        b1.button("Contoh risiko rendah", on_click=cb_contoh, args=("rendah",), key="btn_c1")
+        b2.button("Contoh risiko tinggi", on_click=cb_contoh, args=("tinggi",), key="btn_c2")
+        st.text_input("Nama atau kode pasien (boleh dikosongkan)", key="in_nama", placeholder="Contoh: Budi")
         c1, c2 = st.columns(2)
-        st.session_state.f_usia = c1.number_input("Usia", 1, 120, 35, key="inp_u")
-        st.session_state.f_bmi = c2.number_input("BMI", 10.0, 60.0, 24.0, key="inp_b")
-        st.session_state.f_glu = c1.number_input("Glukosa", 40, 400, 100, key="inp_g")
-        st.session_state.f_tensi = c2.number_input("Tekanan Darah", 60, 250, 120, key="inp_t")
-        st.session_state.f_riw = st.radio("Riwayat Keluarga", ["Tidak ada", "Ada"], horizontal=True, key="inp_r")
-        st.session_state.f_kelas = st.radio("Kelas Risiko", [0, 1], horizontal=True,
-                                            format_func=lambda x: LABEL[x], key="inp_k")
-        st.form_submit_button("Tambah ke Dataset", on_click=cb_tambah)
+        c1.number_input("Usia (tahun)", min_value=1, max_value=120, step=1, key="in_usia")
+        c2.number_input("BMI", min_value=10.0, max_value=60.0, step=0.1, format="%.1f", key="in_bmi")
+        c1.number_input("Glukosa (mg/dL)", min_value=40, max_value=400, step=1, key="in_glu")
+        c2.number_input("Tekanan darah sistolik (mmHg)", min_value=60, max_value=250, step=1, key="in_tensi")
+        st.radio("Riwayat diabetes dalam keluarga", ["Ada", "Tidak ada"], horizontal=True, key="in_riw")
 
-    bagian("Hapus Pasien dari Dataset")
-    col_d1, col_d2 = st.columns(2)
-    
-    with col_d1:
-        st.markdown("**Hapus Berdasarkan ID Pasien**")
-        daftar_id = list(data_kini["Pasien"].astype(str))
-        st.selectbox("Pilih ID Pasien yang ingin dihapus:", daftar_id, key="pilih_hapus_pasien")
-        st.button("Hapus Pasien Terpilih", on_click=cb_hapus_pilih, disabled=len(data_kini) <= 3)
+    langkah(2, "Tentukan nilai K", "K adalah jumlah pasien terdekat yang ikut memberi suara. Pilih angka ganjil agar suara tidak seri.")
+    with st.container(border=True):
+        kmax = min(15, len(data))
+        s.in_k = int(min(max(int(s.in_k), 1), kmax))
+        st.slider("Nilai K (jumlah pasien terdekat)", 1, kmax, key="in_k")
+        st.toggle("Beri suara lebih besar pada pasien yang lebih dekat", key="in_bobot",
+                  help="Voting berbobot: tiap tetangga bersuara sebesar 1 dibagi jaraknya.")
+        st.radio("Cara mengukur jarak", ["Euclidean", "Manhattan"], horizontal=True, key="in_metrik",
+                 help="Euclidean: jarak garis lurus. Manhattan: jumlah selisih tiap fitur.")
+        kb, ab = k_terbaik(evaluasi_loocv(data, 9, bool(s.in_bobot), s.in_metrik))
+        if kb != s.in_k:
+            st.button(f"Saran: pakai K = {kb} (akurasi uji silang {ab * 100:.0f}%)", key="btn_kb",
+                      on_click=cb_pakai_k, args=(kb,))
+        else:
+            st.caption(f"K = {kb} adalah pilihan terbaik menurut uji silang (akurasi {ab * 100:.0f}%).")
 
-    with col_d2:
-        st.markdown("**Aksi Cepat Lainnya**")
-        st.write("Hapus pasien yang paling terakhir ditambahkan:")
-        st.button("Hapus Pasien Terakhir", on_click=cb_hapus_terakhir, disabled=len(data_kini) <= 3)
-        st.write("Kembalikan seluruh dataset ke pengaturan awal:")
-        st.button("Reset ke Dataset Awal (10 Pasien)", on_click=cb_reset)
+    if st.button("Hitung risiko", type="primary", key="btn_hitung"):
+        baru = {"Usia": s.in_usia, "BMI": s.in_bmi, "Glukosa": s.in_glu,
+                "Tekanan Darah": s.in_tensi, "Riwayat Keluarga": 1 if s.in_riw == "Ada" else 0}
+        h = hitung_knn(s.data, baru, s.in_k, s.in_bobot, s.in_metrik)
+        h["nama"] = (s.in_nama or "").strip() or "pasien ini"
+        s.hasil = h
+        s.riwayat.append({
+            "Waktu": h["waktu"], "Pasien": h["nama"], "Usia": baru["Usia"], "BMI": baru["BMI"],
+            "Glukosa": baru["Glukosa"], "Tekanan Darah": baru["Tekanan Darah"],
+            "Riwayat Keluarga": baru["Riwayat Keluarga"], "K": h["k"],
+            "Voting": ("Berbobot" if h["berbobot"] else "Biasa") + " · " + h["metrik"],
+            "Hasil": LABEL[h["pred"]], "Skor Risiko Tinggi (%)": round(h["skor"] * 100),
+        })
 
-    bagian("Impor & Ekspor CSV")
-    st.download_button("Unduh Dataset sebagai CSV", data=data_kini.to_csv(index=False).encode("utf-8"),
-                       file_name="dataset_diabetes_knn.csv", mime="text/csv")
-    st.file_uploader("Unggah Dataset CSV", type="csv", key="csv_up", on_change=cb_muat)
+    if s.hasil is not None:
+        tampilkan_hasil(s.hasil)
+
+
+# ============================================================
+# TAB: ANALISIS
+# ============================================================
+def render_analisis():
+    s = st.session_state
+    data = s.data
+
+    langkah("A", "Seberapa dapat dipercaya model ini?", "Uji silang leave-one-out: tiap pasien di dataset ditebak memakai semua pasien lain, lalu hasilnya dicocokkan dengan kelas aslinya.")
+    hasil = evaluasi_loocv(data, 9, bool(s.in_bobot), s.in_metrik)
+    kb, ab = k_terbaik(hasil)
+    ks = sorted(hasil)
+    kcur = min(max(int(s.in_k), 1), ks[-1])
+    tp, tn, fp, fn = hasil[kcur]
+    total = tp + tn + fp + fn
+    akurasi = (tp + tn) / total
+    sens = f"{tp / (tp + fn) * 100:.0f}%" if (tp + fn) else "-"
+    spes = f"{tn / (tn + fp) * 100:.0f}%" if (tn + fp) else "-"
+    f1 = f"{2 * tp / (2 * tp + fp + fn) * 100:.0f}%" if (2 * tp + fp + fn) else "-"
+
+    bagian(f"Hasil untuk K = {kcur}")
+    st.markdown(
+        '<div class="kpis">'
+        f'<div class="kpi"><b>{akurasi*100:.0f}%</b><span>Akurasi: tebakan yang benar</span></div>'
+        f'<div class="kpi"><b>{sens}</b><span>Sensitivitas: risiko tinggi yang terdeteksi</span></div>'
+        f'<div class="kpi"><b>{spes}</b><span>Spesifisitas: risiko rendah yang terdeteksi</span></div>'
+        f'<div class="kpi"><b>{f1}</b><span>Skor F1: keseimbangan presisi dan sensitivitas</span></div></div>',
+        unsafe_allow_html=True)
+
+    bagian("Tabel kesalahan (confusion matrix)")
+    st.markdown(tabel_html(
+        ["", "Ditebak rendah", "Ditebak tinggi"],
+        [["<b>Aslinya rendah</b>", str(tn), str(fp)], ["<b>Aslinya tinggi</b>", str(fn), str(tp)]]),
+        unsafe_allow_html=True)
+
+    bagian("Akurasi untuk setiap nilai K")
+    st.markdown(svg_kurva(ks, [(hasil[k][0] + hasil[k][1]) / sum(hasil[k]) for k in ks], kcur), unsafe_allow_html=True)
+    catatan(f"Titik besar adalah K yang sedang dipilih di tab Prediksi. K terbaik menurut uji silang: {kb} ({ab * 100:.0f}%). Dataset masih kecil, jadi akurasi yang tinggi belum tentu berlaku untuk pasien sungguhan.")
+
+    bagian("Rata-rata nilai tiap kelas")
+    rows = []
+    for f in FITUR:
+        m0 = data.loc[data["Kelas"] == 0, f].mean()
+        m1 = data.loc[data["Kelas"] == 1, f].mean()
+        if f == "Riwayat Keluarga":
+            rows.append([e(f), f"{m0*100:.0f}% ada", f"{m1*100:.0f}% ada"])
+        else:
+            rows.append([e(f), f"{m0:.1f}", f"{m1:.1f}"])
+    rows.append(["<b>Jumlah pasien</b>", f"<b>{int((data['Kelas'] == 0).sum())}</b>", f"<b>{int((data['Kelas'] == 1).sum())}</b>"])
+    st.markdown(tabel_html(["Fitur", "Risiko rendah", "Risiko tinggi"], rows), unsafe_allow_html=True)
+
+
+# ============================================================
+# TAB: DATA DAN RIWAYAT
+# ============================================================
+def tabel_dataset(data):
+    rows = []
+    for _, r in data.iterrows():
+        rows.append([e(r["Pasien"]), fmt(r["Usia"]), fmt(r["BMI"]), fmt(r["Glukosa"]), fmt(r["Tekanan Darah"]),
+                     "Ada" if int(r["Riwayat Keluarga"]) == 1 else "Tidak ada", pill(r["Kelas"])])
+    return tabel_html(["Pasien", "Usia", "BMI", "Glukosa", "Tekanan", "Riwayat", "Kelas"], rows, scroll=len(rows) > 12)
+
+
+def render_data():
+    s = st.session_state
+    data = s.data
+
+    if s.get("flash_data"):
+        st.success(s.pop("flash_data"))
+    if s.get("flash_error"):
+        st.error(s.pop("flash_error"))
+
+    langkah("+", "Tambah pasien ke dataset", "Pasien baru langsung ikut dihitung pada prediksi berikutnya.")
+    with st.container(border=True):
+        a1, a2 = st.columns(2)
+        a1.number_input("Usia (tahun)", min_value=1, max_value=120, step=1, key="f_usia")
+        a2.number_input("BMI", min_value=10.0, max_value=60.0, step=0.1, format="%.1f", key="f_bmi")
+        a1.number_input("Glukosa (mg/dL)", min_value=40, max_value=400, step=1, key="f_glu")
+        a2.number_input("Tekanan darah sistolik (mmHg)", min_value=60, max_value=250, step=1, key="f_tensi")
+        st.radio("Riwayat diabetes dalam keluarga", ["Ada", "Tidak ada"], horizontal=True, key="f_riw")
+        st.radio("Kelas", [0, 1], horizontal=True, key="f_kelas", format_func=lambda x: f"Risiko {LABEL[x]}")
+        st.button("Tambah ke dataset", type="primary", key="btn_tambah", on_click=cb_tambah)
+
+    langkah("≡", f"Isi dataset ({len(data)} pasien)", "Data ini menjadi pembanding untuk setiap prediksi.")
+    st.markdown(tabel_dataset(data), unsafe_allow_html=True)
+    st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+    b1, b2 = st.columns(2)
+    b1.button("Hapus pasien terakhir", disabled=len(data) <= 3, key="btn_hapus", on_click=cb_hapus)
+    b2.button("Kembali ke 10 data awal", key="btn_reset", on_click=cb_reset)
+
+    langkah("↧", "Simpan dan muat dataset", "Data tambahan hilang saat halaman dimuat ulang. Unduh CSV untuk menyimpannya, lalu muat lagi saat dibutuhkan.")
+    st.download_button("Unduh dataset (CSV)", data.to_csv(index=False).encode("utf-8"),
+                       file_name="dataset_pasien.csv", mime="text/csv", key="dl_data")
+    st.file_uploader("Muat dataset dari file CSV", type="csv", key="csv_up")
+    st.button("Pakai CSV ini", key="btn_muat", on_click=cb_muat)
+    catatan("Kolom CSV: " + ", ".join(KOLOM) + ". Kelas diisi 0 (rendah) atau 1 (tinggi). Riwayat Keluarga diisi 0 atau 1.")
+
+    langkah("⟲", "Riwayat prediksi", "Daftar prediksi yang sudah dihitung selama halaman ini terbuka.")
+    if not s.riwayat:
+        catatan("Belum ada prediksi. Hitung satu pasien di tab Prediksi, nanti hasilnya muncul di sini.")
+    else:
+        rows = []
+        for r in reversed(s.riwayat):
+            rows.append([e(r["Waktu"]), e(r["Pasien"]), fmt(r["Usia"]), fmt(r["BMI"]), fmt(r["Glukosa"]),
+                         fmt(r["Tekanan Darah"]), "Ada" if int(r["Riwayat Keluarga"]) == 1 else "Tidak ada",
+                         str(r["K"]), e(r["Voting"]), pill(1 if r["Hasil"] == "Tinggi" else 0),
+                         f'{r["Skor Risiko Tinggi (%)"]}%'])
+        st.markdown(tabel_html(["Waktu", "Pasien", "Usia", "BMI", "Glukosa", "Tekanan", "Riwayat", "K", "Voting", "Hasil", "Skor"],
+                               rows, scroll=len(rows) > 8), unsafe_allow_html=True)
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+        d1, d2 = st.columns(2)
+        d1.download_button("Unduh riwayat (CSV)", pd.DataFrame(s.riwayat).to_csv(index=False).encode("utf-8"),
+                           file_name="riwayat_prediksi.csv", mime="text/csv", key="dl_riwayat")
+        d2.button("Hapus riwayat", key="btn_hapus_riwayat", on_click=cb_hapus_riwayat)
+
+
+# ============================================================
+# TAB: PANDUAN
+# ============================================================
+def render_panduan():
+    st.markdown(
+        '<div class="guide"><b>Apa yang dilakukan sistem ini</b><br>'
+        'Sistem membandingkan pasien baru dengan pasien yang sudah tercatat di dataset. '
+        'Pasien yang paling mirip menjadi penentu: jika kebanyakan dari mereka berisiko tinggi, pasien baru diprediksi berisiko tinggi.</div>'
+        '<div class="guide"><b>Cara kerja KNN</b><ol>'
+        '<li>Samakan skala semua fitur dengan normalisasi Min-Max.</li>'
+        '<li>Hitung jarak (Euclidean atau Manhattan, sesuai pilihan) pasien baru ke setiap pasien di dataset.</li>'
+        '<li>Urutkan dari yang terdekat, lalu ambil K pasien teratas.</li>'
+        '<li>Hitung suara tiap kelas. Pada voting berbobot, pasien yang lebih dekat bersuara lebih besar.</li>'
+        '<li>Kelas dengan suara terbanyak menjadi kesimpulan.</li></ol>'
+        '<br>Tab Analisis menguji tiap nilai K dengan uji silang, lalu tab Prediksi menyarankan K terbaik.</div>'
+        '<div class="guide"><b>Arti data yang dimasukkan</b><ul>'
+        '<li>Usia dalam tahun.</li>'
+        '<li>BMI adalah indeks massa tubuh (kg per meter persegi).</li>'
+        '<li>Glukosa dalam mg/dL.</li>'
+        '<li>Tekanan darah memakai angka sistolik (angka atas) dalam mmHg.</li>'
+        '<li>Riwayat keluarga: ada atau tidak ada anggota keluarga dengan diabetes.</li>'
+        '<li>Kelas: 0 berarti risiko rendah, 1 berarti risiko tinggi.</li></ul></div>'
+        '<div class="guide"><b>Batasan</b><br>'
+        'Dataset awal hanya berisi 10 pasien dari soal, jadi hasilnya untuk latihan dan belum cocok dipakai sebagai keputusan medis. '
+        'Hasil sebaiknya dikonfirmasi dengan pemeriksaan laboratorium dan tenaga medis.</div>',
+        unsafe_allow_html=True)
+
+
+# ============================================================
+# HALAMAN UTAMA
+# ============================================================
+def inisialisasi():
+    s = st.session_state
+    awal = {
+        "data": DATA_AWAL.copy(), "hasil": None, "riwayat": [],
+        "in_nama": "", "in_usia": 42, "in_bmi": 28.5, "in_glu": 130, "in_tensi": 128,
+        "in_riw": "Ada", "in_k": 3, "in_bobot": False, "in_metrik": "Euclidean",
+        "f_usia": 40, "f_bmi": 25.0, "f_glu": 100, "f_tensi": 120, "f_riw": "Tidak ada", "f_kelas": 0,
+    }
+    for kunci, nilai in awal.items():
+        if kunci not in s:
+            s[kunci] = nilai
+
+
+def main():
+    st.set_page_config(page_title="Cek Risiko Diabetes KNN", page_icon="🩺", layout="centered")
+    st.markdown(CSS, unsafe_allow_html=True)
+    inisialisasi()
+    data = st.session_state.data
+    st.markdown(html_hero(len(data), int((data["Kelas"] == 1).sum())), unsafe_allow_html=True)
+
+    t1, t2, t3, t4 = st.tabs(["Prediksi", "Analisis", "Data", "Panduan"])
+    with t1:
+        render_prediksi()
+    with t2:
+        render_analisis()
+    with t3:
+        render_data()
+    with t4:
+        render_panduan()
+
+
+main()
